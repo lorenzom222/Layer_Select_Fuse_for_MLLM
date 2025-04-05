@@ -12,7 +12,7 @@
     },
     "train_micro_batch_size_per_gpu": "auto",
     "train_batch_size": "auto",
-    "gradient_accumulation_steps": "auto",
+    "gradient_accumulation_steps": 8,
     "zero_optimization": {
         "stage": 1,
         "overlap_comm": true,

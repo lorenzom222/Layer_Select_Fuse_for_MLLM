@@ -32,3 +32,28 @@ Let others install without version constraints.
 
 #### For installling using pip install -e . : use the following:
 pip install --no-cache-dir -e .
+
+#### TO install bitsandbytes:
+
+##### If ROCm == 6.2.0: 
+
+pip install --no-deps --force-reinstall 'https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_x86_64.whl'
+
+##### Else:
+
+# Clone the github repo
+git clone --recurse https://github.com/ROCm/bitsandbytes.git
+cd bitsandbytes
+git checkout rocm_enabled_multi_backend
+
+# Install dependencies
+pip install -r requirements-dev.txt
+
+# Use -DBNB_ROCM_ARCH to specify target GPU arch
+cmake -DBNB_ROCM_ARCH="gfx942" -DCOMPUTE_BACKEND=hip -S .
+
+# Compile the project
+make
+
+# Install
+python setup.py install

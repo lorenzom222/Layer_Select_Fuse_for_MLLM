@@ -779,7 +779,7 @@ def train(attn_implementation=None):
 
     if training_args.wandb_name and training_args.local_rank == 0:
         print("----------------------set wandb task name as:",training_args.wandb_name)
-        wandb.init(project="huggingface", name=training_args.wandb_name,mode="offline")
+        wandb.init(project="huggingface", name=training_args.wandb_name,mode="online")
 
 
     bnb_model_from_pretrained_args = {}

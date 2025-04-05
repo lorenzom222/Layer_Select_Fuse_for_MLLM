@@ -16,8 +16,8 @@ FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 
 
 # Pretraining
-deepspeed llava/train/train.py \
-    --deepspeed ./scripts/zero2.json \
+#export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
+accelerate launch llava/train/train.py \
     --model_name_or_path ${MODEL_PATH} \
     --version plain \
     --data_path ${PRETRAIN_DATA_PATH} \
@@ -35,7 +35,7 @@ deepspeed llava/train/train.py \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 8 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 500 \
@@ -45,16 +45,16 @@ deepspeed llava/train/train.py \
     --warmup_steps 200 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
+    --log_level warning \
     --model_max_length 2048 \
-    --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}
 #--max_steps 10 \
 # Fine-tuning
-deepspeed llava/train/train.py \
-    --deepspeed ./scripts/zero2.json \
+export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
+accelerate launch llava/train/train.py \
     --model_name_or_path ${MODEL_PATH} \
     --version v1 \
     --data_path ${FINETUNE_DATA_PATH} \
@@ -74,7 +74,7 @@ deepspeed llava/train/train.py \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 8 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 1000 \
@@ -84,8 +84,8 @@ deepspeed llava/train/train.py \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
+    --log_level warning \
     --model_max_length 2048 \
-    --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
