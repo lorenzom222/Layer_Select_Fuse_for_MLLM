@@ -1,4 +1,5 @@
 #!/bin/bash
+BASE_MODEL_NAME="test"
 
 # Define common variables
 FUSING_STRATEGY="I_D" # Options: E_D, E_M, I_D, I_M
@@ -10,7 +11,7 @@ PRETRAIN_DATA_PATH="./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json
 PRETRAIN_IMAGE_FOLDER="./playground/data/LLaVA-Pretrain/images"
 MODEL_PATH="mtgv/MobileLLaMA-1.4B-Base" # mtgv/MobileLLaMA-2.7B-Base
 VISION_TOWER="google/siglip-so400m-patch14-384" # google/siglip-so400m-patch14-384  openai/clip-vit-large-patch14-336
-FINETUNE_DATA_PATH="./playground/data/llava_v1_5_mix665k.json" # ./playground/Cambrian-10M/jsons/cleaned_Cambrian737k.json
+FINETUNE_DATA_PATH="./playground/data/LLaVA-Instruct-150K/llava_v1_5_mix665k.json" # ./playground/Cambrian-10M/jsons/cleaned_Cambrian737k.json
 FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 
 
@@ -45,7 +46,6 @@ deepspeed llava/train/train.py \
     --warmup_steps 200 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
-    --tf32 True \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
@@ -86,7 +86,6 @@ deepspeed  llava/train/train.py \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
-    --tf32 True \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
