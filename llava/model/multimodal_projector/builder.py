@@ -4,7 +4,7 @@ import re
 
 
 from functools import partial
-from .ms_cross_attn import MSCrossAttnBlock
+# from .ms_cross_attn import MSCrossAttnBlock
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -98,31 +98,31 @@ def build_vision_projector(config, vision_tower, delay_load=False, **kwargs):
                 modules.append(nn.Linear(config.hidden_size, config.hidden_size))
             return nn.Sequential(*modules)  
         
-    elif config.layer_fusing_strategy =='E_M':
-        # External module fusion strategy:
-        # - For multi-layer visual features, we apply the MMFuser (Cao et al., 2024) method.
-        # - After the MMFuser step, the fused features are passed through a two-layer MLP (projector) for further transformation.
-        # Reference:
-        # Cao, Y., Liu, Y., Chen, Z., et al. (2024). 
-        # "MMFuser: Multimodal Multi-Layer Feature Fuser for Fine-Grained Vision-Language Understanding." 
-        # arXiv preprint arXiv:2410.11829. 
-        # Available at: https://arxiv.org/abs/2410.11829
+    # elif config.layer_fusing_strategy =='E_M':
+    #     # External module fusion strategy:
+    #     # - For multi-layer visual features, we apply the MMFuser (Cao et al., 2024) method.
+    #     # - After the MMFuser step, the fused features are passed through a two-layer MLP (projector) for further transformation.
+    #     # Reference:
+    #     # Cao, Y., Liu, Y., Chen, Z., et al. (2024). 
+    #     # "MMFuser: Multimodal Multi-Layer Feature Fuser for Fine-Grained Vision-Language Understanding." 
+    #     # arXiv preprint arXiv:2410.11829. 
+    #     # Available at: https://arxiv.org/abs/2410.11829
 
-        if config.layer_using_strategy == '18':
-            modules = [MSCrossAttnBlock(n_levels=1,d_model=config.mm_hidden_size)]
-        if config.layer_using_strategy == '3-18-23':
-            modules = [MSCrossAttnBlock(n_levels=2,d_model=config.mm_hidden_size)]
-        if config.layer_using_strategy == 'former' or config.layer_using_strategy == 'latter':
-            modules = [MSCrossAttnBlock(n_levels=12,d_model=config.mm_hidden_size)]   
-        if config.layer_using_strategy == 'all':
-            modules = [MSCrossAttnBlock(n_levels=24,d_model=config.mm_hidden_size)]   
-        if  config.layer_using_strategy == '3-18': 
-            return  # 3-18 and 3-18-23 are consistent in External fusion
-        modules.append(nn.Linear(config.mm_hidden_size, config.hidden_size))
-        for _ in range(1, mlp_depth):
-            modules.append(nn.GELU())
-            modules.append(nn.Linear(config.hidden_size, config.hidden_size))
-        return nn.Sequential(*modules)
+    #     if config.layer_using_strategy == '18':
+    #         modules = [MSCrossAttnBlock(n_levels=1,d_model=config.mm_hidden_size)]
+    #     if config.layer_using_strategy == '3-18-23':
+    #         modules = [MSCrossAttnBlock(n_levels=2,d_model=config.mm_hidden_size)]
+    #     if config.layer_using_strategy == 'former' or config.layer_using_strategy == 'latter':
+    #         modules = [MSCrossAttnBlock(n_levels=12,d_model=config.mm_hidden_size)]   
+    #     if config.layer_using_strategy == 'all':
+    #         modules = [MSCrossAttnBlock(n_levels=24,d_model=config.mm_hidden_size)]   
+    #     if  config.layer_using_strategy == '3-18': 
+    #         return  # 3-18 and 3-18-23 are consistent in External fusion
+    #     modules.append(nn.Linear(config.mm_hidden_size, config.hidden_size))
+    #     for _ in range(1, mlp_depth):
+    #         modules.append(nn.GELU())
+    #         modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+    #     return nn.Sequential(*modules)
     
     else:
         # projectors in Internal fusion 
