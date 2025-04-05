@@ -1,0 +1,420 @@
+[2025-04-05 02:36:42,938] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:36:47,396] [WARNING] [runner.py:215:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2025-04-05 02:36:47,396] [INFO] [runner.py:605:main] cmd = /opt/conda/envs/test/bin/python3 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMCwgMSwgMiwgMywgNCwgNSwgNiwgN119 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None llava/train/train.py --deepspeed ./scripts/zero2.json --model_name_or_path mtgv/MobileLLaMA-1.4B-Base --version plain --data_path ./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json --image_folder ./playground/data/LLaVA-Pretrain/images --vision_tower google/siglip-so400m-patch14-384 --mm_projector_type mlp2x_gelu --tune_mm_mlp_adapter True --mm_vision_select_layer -2 --layer_using_strategy 3-18-23 --layer_fusing_strategy I_D --mm_use_im_start_end False --mm_use_im_patch_token False --bf16 True --output_dir ./checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k --num_train_epochs 1 --per_device_train_batch_size 1 --per_device_eval_batch_size 4 --gradient_accumulation_steps 1 --evaluation_strategy no --save_strategy steps --save_steps 500 --save_total_limit 4 --learning_rate 1e-3 --weight_decay 5e-2 --warmup_steps 200 --lr_scheduler_type cosine --logging_steps 1 --model_max_length 2048 --gradient_checkpointing True --dataloader_num_workers 4 --lazy_preprocess True --report_to wandb --wandb_name test-I_D-pretrain-3-18-23-siglip_14_665k
+[2025-04-05 02:36:54,728] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:36:59,172] [INFO] [launch.py:146:main] WORLD INFO DICT: {'localhost': [0, 1, 2, 3, 4, 5, 6, 7]}
+[2025-04-05 02:36:59,172] [INFO] [launch.py:152:main] nnodes=1, num_local_procs=8, node_rank=0
+[2025-04-05 02:36:59,172] [INFO] [launch.py:163:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0, 1, 2, 3, 4, 5, 6, 7]})
+[2025-04-05 02:36:59,173] [INFO] [launch.py:164:main] dist_world_size=8
+[2025-04-05 02:36:59,173] [INFO] [launch.py:168:main] Setting CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+[2025-04-05 02:36:59,173] [INFO] [launch.py:256:main] process 261075 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=0', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,174] [INFO] [launch.py:256:main] process 261076 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=1', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,175] [INFO] [launch.py:256:main] process 261077 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=2', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,177] [INFO] [launch.py:256:main] process 261078 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=3', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,178] [INFO] [launch.py:256:main] process 261079 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=4', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,179] [INFO] [launch.py:256:main] process 261080 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=5', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,180] [INFO] [launch.py:256:main] process 261081 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=6', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:36:59,181] [INFO] [launch.py:256:main] process 261082 spawned with command: ['/opt/conda/envs/test/bin/python3', '-u', 'llava/train/train.py', '--local_rank=7', '--deepspeed', './scripts/zero2.json', '--model_name_or_path', 'mtgv/MobileLLaMA-1.4B-Base', '--version', 'plain', '--data_path', './playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json', '--image_folder', './playground/data/LLaVA-Pretrain/images', '--vision_tower', 'google/siglip-so400m-patch14-384', '--mm_projector_type', 'mlp2x_gelu', '--tune_mm_mlp_adapter', 'True', '--mm_vision_select_layer', '-2', '--layer_using_strategy', '3-18-23', '--layer_fusing_strategy', 'I_D', '--mm_use_im_start_end', 'False', '--mm_use_im_patch_token', 'False', '--bf16', 'True', '--output_dir', './checkpoint/test-I_D-pretrain-3-18-23-siglip_14_665k', '--num_train_epochs', '1', '--per_device_train_batch_size', '1', '--per_device_eval_batch_size', '4', '--gradient_accumulation_steps', '1', '--evaluation_strategy', 'no', '--save_strategy', 'steps', '--save_steps', '500', '--save_total_limit', '4', '--learning_rate', '1e-3', '--weight_decay', '5e-2', '--warmup_steps', '200', '--lr_scheduler_type', 'cosine', '--logging_steps', '1', '--model_max_length', '2048', '--gradient_checkpointing', 'True', '--dataloader_num_workers', '4', '--lazy_preprocess', 'True', '--report_to', 'wandb', '--wandb_name', 'test-I_D-pretrain-3-18-23-siglip_14_665k']
+[2025-04-05 02:37:14,609] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,615] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,657] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,695] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,770] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,814] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,904] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:14,911] [INFO] [real_accelerator.py:239:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[2025-04-05 02:37:17,209] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,217] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,253] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,308] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,387] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,388] [INFO] [comm.py:689:init_distributed] Initializing TorchBackend in DeepSpeed with backend nccl
+[2025-04-05 02:37:17,434] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,536] [INFO] [comm.py:658:init_distributed] cdb=None
+[2025-04-05 02:37:17,540] [INFO] [comm.py:658:init_distributed] cdb=None
+----------------------set wandb task name as: test-I_D-pretrain-3-18-23-siglip_14_665k
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+ model.config.mm_use_im_start_end: False
+ model.config.mm_projector_lr: None
+training_args.use_im_start_end: False
+model.config.tokenizer_model_max_length: 2048
+model.config.mm_use_im_patch_token: False
+model.config.tokenizer_padding_side: right
+model.config.image_aspect_ratio: square
+model_args.version: plain
+tokenizer.pad_token: <unk>
+mm_patch_merge_type: flat
+Formatting inputs...Skip in lazy mode
+{'loss': 11.1706, 'learning_rate': 5e-06, 'epoch': 0.0}
+{'loss': 9.8927, 'learning_rate': 1e-05, 'epoch': 0.0}
+{'loss': 12.0693, 'learning_rate': 1.5e-05, 'epoch': 0.0}
+{'loss': 10.9337, 'learning_rate': 2e-05, 'epoch': 0.0}
+{'loss': 9.937, 'learning_rate': 2.5e-05, 'epoch': 0.0}
+{'loss': 8.8199, 'learning_rate': 3e-05, 'epoch': 0.0}
+{'loss': 9.369, 'learning_rate': 3.5000000000000004e-05, 'epoch': 0.0}
+{'loss': 10.1232, 'learning_rate': 4e-05, 'epoch': 0.0}
+{'loss': 10.1732, 'learning_rate': 4.4999999999999996e-05, 'epoch': 0.0}
+{'loss': 8.6614, 'learning_rate': 5e-05, 'epoch': 0.0}
+{'loss': 8.7309, 'learning_rate': 5.5e-05, 'epoch': 0.0}
+{'loss': 7.9388, 'learning_rate': 6e-05, 'epoch': 0.0}
+{'loss': 7.2081, 'learning_rate': 6.500000000000001e-05, 'epoch': 0.0}
+{'loss': 6.7687, 'learning_rate': 7.000000000000001e-05, 'epoch': 0.0}
+{'loss': 6.907, 'learning_rate': 7.5e-05, 'epoch': 0.0}
+{'loss': 7.322, 'learning_rate': 8e-05, 'epoch': 0.0}
+{'loss': 6.6896, 'learning_rate': 8.5e-05, 'epoch': 0.0}
+{'loss': 7.0686, 'learning_rate': 8.999999999999999e-05, 'epoch': 0.0}
+{'loss': 6.4256, 'learning_rate': 9.5e-05, 'epoch': 0.0}
+{'loss': 6.9007, 'learning_rate': 0.0001, 'epoch': 0.0}
+{'loss': 6.7563, 'learning_rate': 0.000105, 'epoch': 0.0}
+{'loss': 6.6028, 'learning_rate': 0.00011, 'epoch': 0.0}
+{'loss': 6.5359, 'learning_rate': 0.000115, 'epoch': 0.0}
+{'loss': 6.6154, 'learning_rate': 0.00012, 'epoch': 0.0}
+{'loss': 6.5618, 'learning_rate': 0.000125, 'epoch': 0.0}
+{'loss': 6.0534, 'learning_rate': 0.00013000000000000002, 'epoch': 0.0}
+{'loss': 6.0705, 'learning_rate': 0.000135, 'epoch': 0.0}
+{'loss': 6.1077, 'learning_rate': 0.00014000000000000001, 'epoch': 0.0}
+{'loss': 6.184, 'learning_rate': 0.000145, 'epoch': 0.0}
+{'loss': 6.2307, 'learning_rate': 0.00015, 'epoch': 0.0}
+{'loss': 6.3658, 'learning_rate': 0.000155, 'epoch': 0.0}
+{'loss': 6.0096, 'learning_rate': 0.00016, 'epoch': 0.0}
+{'loss': 5.3269, 'learning_rate': 0.000165, 'epoch': 0.0}
+{'loss': 5.9772, 'learning_rate': 0.00017, 'epoch': 0.0}
+{'loss': 5.3723, 'learning_rate': 0.000175, 'epoch': 0.0}
+{'loss': 5.7763, 'learning_rate': 0.00017999999999999998, 'epoch': 0.0}
+{'loss': 5.6892, 'learning_rate': 0.000185, 'epoch': 0.0}
+{'loss': 5.8609, 'learning_rate': 0.00019, 'epoch': 0.0}
+{'loss': 5.7445, 'learning_rate': 0.00019500000000000002, 'epoch': 0.0}
+{'loss': 5.4614, 'learning_rate': 0.0002, 'epoch': 0.0}
+{'loss': 5.2231, 'learning_rate': 0.000205, 'epoch': 0.0}
+{'loss': 5.2242, 'learning_rate': 0.00021, 'epoch': 0.0}
+{'loss': 5.4669, 'learning_rate': 0.000215, 'epoch': 0.0}
+{'loss': 4.8433, 'learning_rate': 0.00022, 'epoch': 0.0}
+{'loss': 5.0879, 'learning_rate': 0.00022500000000000002, 'epoch': 0.0}
+{'loss': 4.6947, 'learning_rate': 0.00023, 'epoch': 0.0}
+{'loss': 5.1014, 'learning_rate': 0.000235, 'epoch': 0.0}
+{'loss': 4.7759, 'learning_rate': 0.00024, 'epoch': 0.0}
+{'loss': 5.3826, 'learning_rate': 0.000245, 'epoch': 0.0}
+{'loss': 4.8789, 'learning_rate': 0.00025, 'epoch': 0.0}
+{'loss': 4.7344, 'learning_rate': 0.000255, 'epoch': 0.0}
+{'loss': 4.137, 'learning_rate': 0.00026000000000000003, 'epoch': 0.0}
+{'loss': 4.9763, 'learning_rate': 0.00026500000000000004, 'epoch': 0.0}
+{'loss': 4.6156, 'learning_rate': 0.00027, 'epoch': 0.0}
+{'loss': 5.1141, 'learning_rate': 0.000275, 'epoch': 0.0}
+{'loss': 4.8967, 'learning_rate': 0.00028000000000000003, 'epoch': 0.0}
+{'loss': 4.9073, 'learning_rate': 0.000285, 'epoch': 0.0}
+{'loss': 4.9424, 'learning_rate': 0.00029, 'epoch': 0.0}
+{'loss': 4.5612, 'learning_rate': 0.000295, 'epoch': 0.0}
+{'loss': 4.7343, 'learning_rate': 0.0003, 'epoch': 0.0}
+{'loss': 4.3352, 'learning_rate': 0.000305, 'epoch': 0.0}
+{'loss': 4.5055, 'learning_rate': 0.00031, 'epoch': 0.0}
+{'loss': 4.5033, 'learning_rate': 0.000315, 'epoch': 0.0}
+{'loss': 4.0744, 'learning_rate': 0.00032, 'epoch': 0.0}
+{'loss': 4.6804, 'learning_rate': 0.00032500000000000004, 'epoch': 0.0}
+{'loss': 4.2755, 'learning_rate': 0.00033, 'epoch': 0.0}
+{'loss': 5.1694, 'learning_rate': 0.000335, 'epoch': 0.0}
+{'loss': 4.4254, 'learning_rate': 0.00034, 'epoch': 0.0}
+{'loss': 4.5578, 'learning_rate': 0.000345, 'epoch': 0.0}
+{'loss': 4.8256, 'learning_rate': 0.00035, 'epoch': 0.0}
+{'loss': 4.273, 'learning_rate': 0.000355, 'epoch': 0.0}
+{'loss': 5.052, 'learning_rate': 0.00035999999999999997, 'epoch': 0.0}
+{'loss': 4.5963, 'learning_rate': 0.000365, 'epoch': 0.0}
+{'loss': 4.6301, 'learning_rate': 0.00037, 'epoch': 0.0}
+{'loss': 4.7121, 'learning_rate': 0.000375, 'epoch': 0.0}
+{'loss': 5.0985, 'learning_rate': 0.00038, 'epoch': 0.0}
+{'loss': 4.1442, 'learning_rate': 0.00038500000000000003, 'epoch': 0.0}
+{'loss': 5.1513, 'learning_rate': 0.00039000000000000005, 'epoch': 0.0}
+{'loss': 4.6489, 'learning_rate': 0.000395, 'epoch': 0.0}
+{'loss': 4.6158, 'learning_rate': 0.0004, 'epoch': 0.0}
+{'loss': 4.3815, 'learning_rate': 0.00040500000000000003, 'epoch': 0.0}
+{'loss': 4.5402, 'learning_rate': 0.00041, 'epoch': 0.0}
+{'loss': 4.1318, 'learning_rate': 0.000415, 'epoch': 0.0}
+{'loss': 4.3656, 'learning_rate': 0.00042, 'epoch': 0.0}
+{'loss': 3.9361, 'learning_rate': 0.000425, 'epoch': 0.0}
+{'loss': 4.4439, 'learning_rate': 0.00043, 'epoch': 0.0}
+{'loss': 4.4335, 'learning_rate': 0.000435, 'epoch': 0.0}
+{'loss': 4.4416, 'learning_rate': 0.00044, 'epoch': 0.0}
+{'loss': 4.6051, 'learning_rate': 0.00044500000000000003, 'epoch': 0.0}
+{'loss': 4.2326, 'learning_rate': 0.00045000000000000004, 'epoch': 0.0}
+{'loss': 4.5263, 'learning_rate': 0.000455, 'epoch': 0.0}
+{'loss': 4.1786, 'learning_rate': 0.00046, 'epoch': 0.0}
+{'loss': 4.3986, 'learning_rate': 0.000465, 'epoch': 0.0}
+{'loss': 4.2732, 'learning_rate': 0.00047, 'epoch': 0.0}
+{'loss': 3.8324, 'learning_rate': 0.000475, 'epoch': 0.0}
+{'loss': 4.1032, 'learning_rate': 0.00048, 'epoch': 0.0}
+{'loss': 4.489, 'learning_rate': 0.00048499999999999997, 'epoch': 0.0}
+{'loss': 4.8097, 'learning_rate': 0.00049, 'epoch': 0.0}
+{'loss': 4.0881, 'learning_rate': 0.000495, 'epoch': 0.0}
+{'loss': 4.6603, 'learning_rate': 0.0005, 'epoch': 0.0}
+{'loss': 4.1222, 'learning_rate': 0.000505, 'epoch': 0.0}
+{'loss': 4.4537, 'learning_rate': 0.00051, 'epoch': 0.0}
+{'loss': 4.2907, 'learning_rate': 0.000515, 'epoch': 0.0}
+{'loss': 4.0593, 'learning_rate': 0.0005200000000000001, 'epoch': 0.0}
+{'loss': 4.2141, 'learning_rate': 0.0005250000000000001, 'epoch': 0.0}
+{'loss': 3.9738, 'learning_rate': 0.0005300000000000001, 'epoch': 0.0}
+{'loss': 4.3081, 'learning_rate': 0.000535, 'epoch': 0.0}
+{'loss': 3.8885, 'learning_rate': 0.00054, 'epoch': 0.0}
+{'loss': 4.2898, 'learning_rate': 0.000545, 'epoch': 0.0}
+{'loss': 3.8242, 'learning_rate': 0.00055, 'epoch': 0.0}
+{'loss': 4.6687, 'learning_rate': 0.000555, 'epoch': 0.0}
+{'loss': 4.438, 'learning_rate': 0.0005600000000000001, 'epoch': 0.0}
+{'loss': 3.9981, 'learning_rate': 0.000565, 'epoch': 0.0}
+{'loss': 4.583, 'learning_rate': 0.00057, 'epoch': 0.0}
+{'loss': 4.7808, 'learning_rate': 0.000575, 'epoch': 0.0}
+{'loss': 3.8228, 'learning_rate': 0.00058, 'epoch': 0.0}
+{'loss': 4.1473, 'learning_rate': 0.000585, 'epoch': 0.0}
+{'loss': 4.2305, 'learning_rate': 0.00059, 'epoch': 0.0}
+{'loss': 4.1748, 'learning_rate': 0.0005949999999999999, 'epoch': 0.0}
+{'loss': 4.4172, 'learning_rate': 0.0006, 'epoch': 0.0}
+{'loss': 4.4371, 'learning_rate': 0.000605, 'epoch': 0.0}
+{'loss': 3.8005, 'learning_rate': 0.00061, 'epoch': 0.0}
+{'loss': 4.0614, 'learning_rate': 0.000615, 'epoch': 0.0}
+{'loss': 4.0784, 'learning_rate': 0.00062, 'epoch': 0.0}
+{'loss': 4.2963, 'learning_rate': 0.000625, 'epoch': 0.0}
+{'loss': 4.2438, 'learning_rate': 0.00063, 'epoch': 0.0}
+{'loss': 4.2199, 'learning_rate': 0.000635, 'epoch': 0.0}
+{'loss': 4.4834, 'learning_rate': 0.00064, 'epoch': 0.0}
+{'loss': 4.0624, 'learning_rate': 0.0006450000000000001, 'epoch': 0.0}
+{'loss': 3.8044, 'learning_rate': 0.0006500000000000001, 'epoch': 0.0}
+{'loss': 3.7381, 'learning_rate': 0.0006550000000000001, 'epoch': 0.0}
+{'loss': 4.1634, 'learning_rate': 0.00066, 'epoch': 0.0}
+{'loss': 4.0528, 'learning_rate': 0.000665, 'epoch': 0.0}
+{'loss': 4.3402, 'learning_rate': 0.00067, 'epoch': 0.0}
+{'loss': 4.6666, 'learning_rate': 0.000675, 'epoch': 0.0}
+{'loss': 4.153, 'learning_rate': 0.00068, 'epoch': 0.0}
+{'loss': 4.0444, 'learning_rate': 0.0006850000000000001, 'epoch': 0.0}
+{'loss': 3.9782, 'learning_rate': 0.00069, 'epoch': 0.0}
+{'loss': 4.301, 'learning_rate': 0.000695, 'epoch': 0.0}
+{'loss': 3.6338, 'learning_rate': 0.0007, 'epoch': 0.0}
+{'loss': 3.9244, 'learning_rate': 0.000705, 'epoch': 0.0}
+{'loss': 4.22, 'learning_rate': 0.00071, 'epoch': 0.0}
+{'loss': 3.9905, 'learning_rate': 0.000715, 'epoch': 0.0}
+{'loss': 4.2381, 'learning_rate': 0.0007199999999999999, 'epoch': 0.0}
+{'loss': 3.504, 'learning_rate': 0.000725, 'epoch': 0.0}
+{'loss': 4.3848, 'learning_rate': 0.00073, 'epoch': 0.0}
+{'loss': 4.1925, 'learning_rate': 0.000735, 'epoch': 0.0}
+{'loss': 4.2145, 'learning_rate': 0.00074, 'epoch': 0.0}
+{'loss': 4.3914, 'learning_rate': 0.000745, 'epoch': 0.0}
+{'loss': 3.9672, 'learning_rate': 0.00075, 'epoch': 0.0}
+{'loss': 3.9006, 'learning_rate': 0.000755, 'epoch': 0.0}
+{'loss': 3.9197, 'learning_rate': 0.00076, 'epoch': 0.0}
+{'loss': 4.2372, 'learning_rate': 0.0007650000000000001, 'epoch': 0.0}
+{'loss': 3.7029, 'learning_rate': 0.0007700000000000001, 'epoch': 0.0}
+{'loss': 4.0187, 'learning_rate': 0.0007750000000000001, 'epoch': 0.0}
+{'loss': 4.0558, 'learning_rate': 0.0007800000000000001, 'epoch': 0.0}
+{'loss': 4.3061, 'learning_rate': 0.000785, 'epoch': 0.0}
+{'loss': 3.8129, 'learning_rate': 0.00079, 'epoch': 0.0}
+{'loss': 3.988, 'learning_rate': 0.000795, 'epoch': 0.0}
+{'loss': 4.2463, 'learning_rate': 0.0008, 'epoch': 0.0}
+{'loss': 4.3378, 'learning_rate': 0.000805, 'epoch': 0.0}
+{'loss': 3.9619, 'learning_rate': 0.0008100000000000001, 'epoch': 0.0}
+{'loss': 3.9277, 'learning_rate': 0.000815, 'epoch': 0.0}
+{'loss': 3.9325, 'learning_rate': 0.00082, 'epoch': 0.0}
+{'loss': 4.0569, 'learning_rate': 0.000825, 'epoch': 0.0}
+{'loss': 4.3594, 'learning_rate': 0.00083, 'epoch': 0.0}
+{'loss': 4.075, 'learning_rate': 0.000835, 'epoch': 0.0}
+{'loss': 4.6729, 'learning_rate': 0.00084, 'epoch': 0.0}
+{'loss': 4.1324, 'learning_rate': 0.0008449999999999999, 'epoch': 0.0}
+{'loss': 4.0717, 'learning_rate': 0.00085, 'epoch': 0.0}
+{'loss': 4.7855, 'learning_rate': 0.000855, 'epoch': 0.0}
+{'loss': 4.3563, 'learning_rate': 0.00086, 'epoch': 0.0}
+{'loss': 4.9021, 'learning_rate': 0.000865, 'epoch': 0.0}
+{'loss': 3.7414, 'learning_rate': 0.00087, 'epoch': 0.0}
+{'loss': 4.1614, 'learning_rate': 0.000875, 'epoch': 0.0}
+{'loss': 4.261, 'learning_rate': 0.00088, 'epoch': 0.0}
+{'loss': 4.6214, 'learning_rate': 0.000885, 'epoch': 0.0}
+{'loss': 4.0566, 'learning_rate': 0.0008900000000000001, 'epoch': 0.0}
+{'loss': 3.9164, 'learning_rate': 0.0008950000000000001, 'epoch': 0.0}
+{'loss': 4.1909, 'learning_rate': 0.0009000000000000001, 'epoch': 0.0}
+{'loss': 4.0465, 'learning_rate': 0.0009050000000000001, 'epoch': 0.0}
+{'loss': 3.7839, 'learning_rate': 0.00091, 'epoch': 0.0}
+{'loss': 4.5611, 'learning_rate': 0.000915, 'epoch': 0.0}
+{'loss': 4.568, 'learning_rate': 0.00092, 'epoch': 0.0}
+{'loss': 4.2851, 'learning_rate': 0.000925, 'epoch': 0.0}
+{'loss': 3.9774, 'learning_rate': 0.00093, 'epoch': 0.0}
+{'loss': 3.9315, 'learning_rate': 0.0009350000000000001, 'epoch': 0.0}
+{'loss': 3.9356, 'learning_rate': 0.00094, 'epoch': 0.0}
+{'loss': 4.0497, 'learning_rate': 0.000945, 'epoch': 0.0}
+{'loss': 4.2178, 'learning_rate': 0.00095, 'epoch': 0.0}
+{'loss': 3.6365, 'learning_rate': 0.000955, 'epoch': 0.0}
+{'loss': 4.2194, 'learning_rate': 0.00096, 'epoch': 0.0}
+{'loss': 3.7437, 'learning_rate': 0.000965, 'epoch': 0.0}
+{'loss': 4.0333, 'learning_rate': 0.0009699999999999999, 'epoch': 0.0}
+{'loss': 3.6968, 'learning_rate': 0.000975, 'epoch': 0.0}
+{'loss': 4.4119, 'learning_rate': 0.00098, 'epoch': 0.0}
+{'loss': 4.5566, 'learning_rate': 0.000985, 'epoch': 0.0}
+{'loss': 4.0063, 'learning_rate': 0.00099, 'epoch': 0.0}
+{'loss': 4.69, 'learning_rate': 0.000995, 'epoch': 0.0}
+{'loss': 3.8449, 'learning_rate': 0.001, 'epoch': 0.0}
+{'loss': 4.0602, 'learning_rate': 0.0009999999994901461, 'epoch': 0.0}
+{'loss': 4.6137, 'learning_rate': 0.0009999999979605847, 'epoch': 0.0}
+{'loss': 3.9305, 'learning_rate': 0.0009999999954113156, 'epoch': 0.0}
+{'loss': 4.3808, 'learning_rate': 0.0009999999918423386, 'epoch': 0.0}
+{'loss': 4.2833, 'learning_rate': 0.0009999999872536542, 'epoch': 0.0}
+{'loss': 3.5932, 'learning_rate': 0.0009999999816452622, 'epoch': 0.0}
+{'loss': 4.5028, 'learning_rate': 0.0009999999750171624, 'epoch': 0.0}
+{'loss': 4.1365, 'learning_rate': 0.0009999999673693549, 'epoch': 0.0}
+{'loss': 4.475, 'learning_rate': 0.00099999995870184, 'epoch': 0.0}
+{'loss': 4.7044, 'learning_rate': 0.0009999999490146174, 'epoch': 0.0}
+{'loss': 4.4625, 'learning_rate': 0.0009999999383076875, 'epoch': 0.0}
+{'loss': 3.9504, 'learning_rate': 0.0009999999265810498, 'epoch': 0.0}
+{'loss': 3.7422, 'learning_rate': 0.0009999999138347046, 'epoch': 0.0}
+{'loss': 3.9104, 'learning_rate': 0.0009999999000686519, 'epoch': 0.0}
+{'loss': 3.9964, 'learning_rate': 0.0009999998852828918, 'epoch': 0.0}
+{'loss': 4.1141, 'learning_rate': 0.0009999998694774242, 'epoch': 0.0}
+{'loss': 3.8359, 'learning_rate': 0.0009999998526522493, 'epoch': 0.0}
+{'loss': 4.1239, 'learning_rate': 0.000999999834807367, 'epoch': 0.0}
+{'loss': 4.4048, 'learning_rate': 0.0009999998159427774, 'epoch': 0.0}
+{'loss': 4.0528, 'learning_rate': 0.0009999997960584803, 'epoch': 0.0}
+{'loss': 4.2762, 'learning_rate': 0.0009999997751544763, 'epoch': 0.0}
+{'loss': 4.0617, 'learning_rate': 0.0009999997532307648, 'epoch': 0.0}
+{'loss': 4.3665, 'learning_rate': 0.0009999997302873463, 'epoch': 0.0}
+{'loss': 4.2036, 'learning_rate': 0.0009999997063242206, 'epoch': 0.0}
+{'loss': 3.6271, 'learning_rate': 0.000999999681341388, 'epoch': 0.0}
+{'loss': 3.772, 'learning_rate': 0.000999999655338848, 'epoch': 0.0}
+{'loss': 4.1514, 'learning_rate': 0.0009999996283166013, 'epoch': 0.0}
+{'loss': 3.642, 'learning_rate': 0.0009999996002746476, 'epoch': 0.0}
+{'loss': 4.6659, 'learning_rate': 0.0009999995712129872, 'epoch': 0.0}
+{'loss': 4.3368, 'learning_rate': 0.0009999995411316199, 'epoch': 0.0}
+{'loss': 4.5691, 'learning_rate': 0.000999999510030546, 'epoch': 0.0}
+{'loss': 3.5809, 'learning_rate': 0.0009999994779097653, 'epoch': 0.0}
+{'loss': 4.3662, 'learning_rate': 0.000999999444769278, 'epoch': 0.0}
+{'loss': 4.2741, 'learning_rate': 0.000999999410609084, 'epoch': 0.0}
+{'loss': 4.4242, 'learning_rate': 0.0009999993754291837, 'epoch': 0.0}
+{'loss': 3.9345, 'learning_rate': 0.000999999339229577, 'epoch': 0.0}
+{'loss': 4.2147, 'learning_rate': 0.000999999302010264, 'epoch': 0.0}
+{'loss': 4.6535, 'learning_rate': 0.0009999992637712448, 'epoch': 0.0}
+{'loss': 4.1924, 'learning_rate': 0.0009999992245125194, 'epoch': 0.0}
+{'loss': 4.3107, 'learning_rate': 0.000999999184234088, 'epoch': 0.0}
+{'loss': 4.5514, 'learning_rate': 0.0009999991429359503, 'epoch': 0.0}
+{'loss': 4.2158, 'learning_rate': 0.000999999100618107, 'epoch': 0.0}
+{'loss': 3.9775, 'learning_rate': 0.0009999990572805578, 'epoch': 0.0}
+{'loss': 3.9216, 'learning_rate': 0.0009999990129233027, 'epoch': 0.0}
+{'loss': 4.1678, 'learning_rate': 0.000999998967546342, 'epoch': 0.0}
+{'loss': 4.3854, 'learning_rate': 0.0009999989211496758, 'epoch': 0.0}
+{'loss': 4.2395, 'learning_rate': 0.000999998873733304, 'epoch': 0.0}
+{'loss': 4.017, 'learning_rate': 0.0009999988252972272, 'epoch': 0.0}
+{'loss': 3.8522, 'learning_rate': 0.000999998775841445, 'epoch': 0.0}
+{'loss': 4.7061, 'learning_rate': 0.0009999987253659572, 'epoch': 0.0}
+{'loss': 4.1814, 'learning_rate': 0.0009999986738707647, 'epoch': 0.0}
+{'loss': 3.3338, 'learning_rate': 0.0009999986213558671, 'epoch': 0.0}
+{'loss': 4.2785, 'learning_rate': 0.0009999985678212648, 'epoch': 0.0}
+{'loss': 3.9867, 'learning_rate': 0.0009999985132669578, 'epoch': 0.0}
+{'loss': 4.2241, 'learning_rate': 0.000999998457692946, 'epoch': 0.0}
+{'loss': 3.9924, 'learning_rate': 0.0009999984010992298, 'epoch': 0.0}
+{'loss': 4.0234, 'learning_rate': 0.000999998343485809, 'epoch': 0.0}
+{'loss': 4.0075, 'learning_rate': 0.000999998284852684, 'epoch': 0.0}
+{'loss': 4.1607, 'learning_rate': 0.0009999982251998548, 'epoch': 0.0}
+{'loss': 4.1757, 'learning_rate': 0.0009999981645273217, 'epoch': 0.0}
+{'loss': 4.3731, 'learning_rate': 0.0009999981028350846, 'epoch': 0.0}
+{'loss': 4.1904, 'learning_rate': 0.0009999980401231437, 'epoch': 0.0}
+{'loss': 3.972, 'learning_rate': 0.000999997976391499, 'epoch': 0.0}
+{'loss': 3.789, 'learning_rate': 0.000999997911640151, 'epoch': 0.0}
+{'loss': 4.59, 'learning_rate': 0.0009999978458690995, 'epoch': 0.0}
+{'loss': 3.496, 'learning_rate': 0.0009999977790783445, 'epoch': 0.0}
+{'loss': 4.3832, 'learning_rate': 0.0009999977112678867, 'epoch': 0.0}
+{'loss': 4.2938, 'learning_rate': 0.0009999976424377257, 'epoch': 0.0}
+{'loss': 3.6512, 'learning_rate': 0.0009999975725878618, 'epoch': 0.0}
+{'loss': 3.8935, 'learning_rate': 0.0009999975017182952, 'epoch': 0.0}
+{'loss': 3.8496, 'learning_rate': 0.0009999974298290262, 'epoch': 0.0}
+{'loss': 3.9888, 'learning_rate': 0.0009999973569200546, 'epoch': 0.0}
+{'loss': 4.0814, 'learning_rate': 0.0009999972829913808, 'epoch': 0.0}
+{'loss': 3.8567, 'learning_rate': 0.000999997208043005, 'epoch': 0.0}
+{'loss': 4.3631, 'learning_rate': 0.000999997132074927, 'epoch': 0.0}
+{'loss': 5.1189, 'learning_rate': 0.0009999970550871474, 'epoch': 0.0}
+{'loss': 4.1708, 'learning_rate': 0.000999996977079666, 'epoch': 0.0}
+{'loss': 3.7264, 'learning_rate': 0.0009999968980524832, 'epoch': 0.0}
+{'loss': 3.6424, 'learning_rate': 0.000999996818005599, 'epoch': 0.0}
+{'loss': 4.2026, 'learning_rate': 0.0009999967369390135, 'epoch': 0.0}
+{'loss': 4.2478, 'learning_rate': 0.0009999966548527271, 'epoch': 0.0}
+{'loss': 3.9845, 'learning_rate': 0.0009999965717467398, 'epoch': 0.0}
+{'loss': 3.6958, 'learning_rate': 0.0009999964876210518, 'epoch': 0.0}
+{'loss': 4.4151, 'learning_rate': 0.0009999964024756634, 'epoch': 0.0}
+{'loss': 4.1632, 'learning_rate': 0.0009999963163105747, 'epoch': 0.0}
+{'loss': 3.793, 'learning_rate': 0.0009999962291257858, 'epoch': 0.0}
+{'loss': 4.4809, 'learning_rate': 0.0009999961409212967, 'epoch': 0.0}
+{'loss': 4.4424, 'learning_rate': 0.0009999960516971081, 'epoch': 0.0}
+{'loss': 4.174, 'learning_rate': 0.0009999959614532198, 'epoch': 0.0}
+{'loss': 3.681, 'learning_rate': 0.0009999958701896322, 'epoch': 0.0}
+{'loss': 3.7309, 'learning_rate': 0.000999995777906345, 'epoch': 0.0}
+{'loss': 3.4712, 'learning_rate': 0.000999995684603359, 'epoch': 0.0}
+{'loss': 3.8413, 'learning_rate': 0.000999995590280674, 'epoch': 0.0}
+{'loss': 4.0777, 'learning_rate': 0.0009999954949382905, 'epoch': 0.0}
+{'loss': 3.7638, 'learning_rate': 0.0009999953985762085, 'epoch': 0.0}
+{'loss': 4.1427, 'learning_rate': 0.0009999953011944282, 'epoch': 0.0}
+{'loss': 3.9333, 'learning_rate': 0.0009999952027929498, 'epoch': 0.0}
+{'loss': 4.2146, 'learning_rate': 0.0009999951033717734, 'epoch': 0.0}
+{'loss': 4.2388, 'learning_rate': 0.0009999950029308995, 'epoch': 0.0}
+{'loss': 3.8523, 'learning_rate': 0.000999994901470328, 'epoch': 0.0}
+{'loss': 3.5743, 'learning_rate': 0.0009999947989900592, 'epoch': 0.0}
+{'loss': 4.4131, 'learning_rate': 0.0009999946954900934, 'epoch': 0.0}
+{'loss': 4.0938, 'learning_rate': 0.0009999945909704307, 'epoch': 0.0}
+{'loss': 4.0199, 'learning_rate': 0.0009999944854310714, 'epoch': 0.0}

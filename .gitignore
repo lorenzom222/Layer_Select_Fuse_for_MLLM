@@ -42,3 +42,4 @@ tokens.txt
 *.egg-info
 playground/
 wandb/*
+checkpoint/*

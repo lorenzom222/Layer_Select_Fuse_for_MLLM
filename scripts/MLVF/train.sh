@@ -35,11 +35,10 @@ deepspeed llava/train/train.py \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 500 \
-    --max_steps 10 \
     --save_total_limit 4 \
     --learning_rate 1e-3 \
     --weight_decay 5e-2 \
@@ -52,9 +51,9 @@ deepspeed llava/train/train.py \
     --lazy_preprocess True \
     --report_to wandb \
     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}
-
+#--max_steps 10 \
 # Fine-tuning
-deepspeed  llava/train/train.py \
+deepspeed llava/train/train.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path ${MODEL_PATH} \
     --version v1 \
@@ -75,11 +74,10 @@ deepspeed  llava/train/train.py \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 1000 \
-    --max_steps 10 \
     --save_total_limit 5 \
     --learning_rate 2e-5 \
     --weight_decay 0. \
@@ -92,3 +90,4 @@ deepspeed  llava/train/train.py \
     --lazy_preprocess True \
     --report_to wandb \
     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME}
+#     --max_steps 10 \
