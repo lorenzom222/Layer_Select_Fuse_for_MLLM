@@ -17,7 +17,7 @@ Do not create new conda environments directly. These will be unstable, and will 
 
 ### Clone off py_3.10 as a base for any new environment
 conda create --name prism --clone py_3.10
-
+conda create --name mllava --clone py_3.10
 
 #### *CAREFUL* For installing libraries (such as torch/numpy/..even matplotlib)
 Use conda install -n prism <library> instead of pip install <library>.
