@@ -17,7 +17,7 @@ FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 
 # Pretraining
 #export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
-accelerate launch llava/train/train.py \
+accelerate launch llava/train/ .py \
     --model_name_or_path ${MODEL_PATH} \
     --version plain \
     --data_path ${PRETRAIN_DATA_PATH} \
@@ -89,5 +89,4 @@ accelerate launch llava/train/train.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME}
-#     --max_steps 10 \
+    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME}#     --max_steps 10 \

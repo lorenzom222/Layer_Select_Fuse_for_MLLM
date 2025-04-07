@@ -84,6 +84,11 @@ def _get_unpad_data(attention_mask):
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
     """
     Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+    Expands 2D mask [batch, seq_len] to 4D [batch, 1, tgt_len, src_len].
+    Which means:
+    - 2D mask: [batch, seq_len] , where seq_len is the length of the sequence and batch is the number of sequences.
+    - 4D mask: [batch, 1, tgt_len, src_len] , where tgt_len is the length of the target sequence and src_len is the length of the source sequence.
+
     """
     bsz, src_len = mask.size()
     tgt_len = tgt_len if tgt_len is not None else src_len
@@ -116,6 +121,8 @@ def _make_causal_mask(
 
 
 class zero_init(nn.Module):
+    # Simple module that initializes weights to zero
+    # Used for stabilizing training of fusion modules
     def __init__(self,idx=None):
         super().__init__()
         self.weight = nn.Parameter(torch.zeros(1))
@@ -125,6 +132,16 @@ class zero_init(nn.Module):
 
 
 class LlamaRMSNorm(nn.Module):
+    '''
+    Root Mean Square normalization
+    Simpler alternative to LayerNorm
+    Formula: output = weight * input / sqrt(mean(input^2) + eps)
+        - eps: small constant to avoid division by zero
+        - weight: learnable scaling factor
+        - input: input tensor to normalize
+        - hidden_states: input tensor to normalize
+    '''
+
     def __init__(self, hidden_size, eps=1e-6):
         """
         LlamaRMSNorm is equivalent to T5LayerNorm
@@ -143,8 +160,17 @@ class LlamaRMSNorm(nn.Module):
 
 ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm)
 
-
+# Position Embeddings
 class LlamaRotaryEmbedding(nn.Module):
+    '''
+    Rotary Position Embeddings (RoPE)
+    Purpose: Encode positional information in a way that's efficient and effective
+    Key features:
+    - Uses sine/cosine functions (sin/cos)
+    - Caches computed values for efficiency (register_buffer)
+    - Supports different scaling strategies (LlamaLinearScalingRotaryEmbedding, LlamaDynamicNTKScalingRotaryEmbedding)
+    '''
+
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
 
@@ -261,34 +287,63 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
 
 
 class LlamaMLP(nn.Module):
+    '''
+    MLP used in the transformer layers
+    Contains: 
+    - gate (gate_proj): Linear layer for gating
+    - up (up_proj): Linear layer for upscaling
+    - down (down_proj): Linear layer for downscaling
+    - act_fn: Activation function from config
+    '''
     def __init__(self, config):
+        # Step 1: Basic Setup
         super().__init__()
         self.config = config
-        self.hidden_size = config.hidden_size
-        self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.hidden_size = config.hidden_size        # Size of input/output
+        self.intermediate_size = config.intermediate_size  # Size of middle layer
+        
+        # Step 2: Create Three Linear Layers
+        # These are like simple transformations of the data
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)  # Gate layer -> Produces a gating signal that controls what information to pass through. It's like a filter that decides which parts of the input are important
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)    # Up layer -> Scales up the input to the intermediate size, but doesn't apply the activation function like the gate layer does
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)  # Down layer -> Scales down the intermediate size to the hidden size
+        
+        # Step 3: Get the activation function (like ReLU, but configurable)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
+        # Path: Check if we need to split the computation across multiple GPUs
         if self.config.pretraining_tp > 1:
+            # Step 1: Split the weights into smaller pieces
             slice = self.intermediate_size // self.config.pretraining_tp
             gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
             up_proj_slices = self.up_proj.weight.split(slice, dim=0)
             down_proj_slices = self.down_proj.weight.split(slice, dim=1)
 
+            # Step 2: Process each piece separately and combine results
+            # Step 2.1: Apply the gate and up projections, these are the same operations but with different weights ofc
             gate_proj = torch.cat(
                 [F.linear(x, gate_proj_slices[i]) for i in range(self.config.pretraining_tp)], dim=-1
             )
             up_proj = torch.cat([F.linear(x, up_proj_slices[i]) for i in range(self.config.pretraining_tp)], dim=-1)
 
+            # Step 2.2: 
+            # Now, The activation function (self.act_fn) is applied to the output of the gate_proj. (This produces values between 0 and 1 (depending on the activation function, like GELU or ReLU).)
+            # Then Element-Wise Multiplication on act_fn(gate_proj) with up_proj --> This is to act like a filter, where the activation function acts as a gate.
+            # This is the gating  mechanism — parts of the input can be amplified or suppressed based on the activation
             intermediate_states = (self.act_fn(gate_proj) * up_proj).split(slice, dim=2)
+            
+            # Step 2.3: Apply the down to compressed back down to the original size. 
             down_proj = [
                 F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.config.pretraining_tp)
             ]
             down_proj = sum(down_proj)
         else:
+            # If not using multiple GPUs, do simple forward pass:
+            # 1. Pass through gate layer and activate
+            # 2. Pass through up layer
+            # 3. Multiply results
+            # 4. Pass through down layer
             down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj
@@ -312,8 +367,19 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 
 class LlamaCrossAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
+    '''
+    Handles cross-attention between text and image
+    Key components:
+    - Query (q_proj): Query projection from text
+    - Key (k_proj): Key projection from image
+    - Value (v_proj): Value projection from image
+    - Attention computation with masking (cross_attn_mask)
+    - Output projection (o_proj)
+    - Rotary position embedding (rotary_emb)
+    '''
 
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
+        # Step 1: Basic Setup
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -323,6 +389,7 @@ class LlamaCrossAttention(nn.Module):
                 "lead to errors during the forward call if caching is used. Please make sure to provide a `layer_idx` "
                 "when creating this class."
             )
+        # Step 2: Configure Attention Parameters
 
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
@@ -340,8 +407,9 @@ class LlamaCrossAttention(nn.Module):
                 f" and `num_heads`: {self.num_heads})."
             )
 
-
-
+        # Step 3: Prep data for attention
+        # Text input (hidden_states) is converted to queries using q_proj.
+        # Image input (image_feature) is converted to keys and values using k_proj and v_proj.
         self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
@@ -376,10 +444,12 @@ class LlamaCrossAttention(nn.Module):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
-        bsz, q_len, _ = hidden_states.size()
-        _, img_len,_ = image_feature.size()
+        # Step 1: Get Dimensions
+        bsz, q_len, _ = hidden_states.size() # Batch size, sequence length
+        _, img_len,_ = image_feature.size() # Image feature length
         padding_length = hidden_states.shape[1] - image_feature.shape[1]
 
+        # Step 2: Prep Attention Mask
         if attention_mask is not None:
 
             cross_attn_mask = attention_mask[:, :, :, :img_len]
@@ -388,22 +458,29 @@ class LlamaCrossAttention(nn.Module):
 
         image_feature = image_feature
 
+        # Step 3: Project Text to Queries
         query_states = self.q_proj(hidden_states)
+
+        # Step 4: Project Image to Keys and Values
         if past_key_value is None:
             key_states = self.k_proj(image_feature)
             value_states = self.v_proj(image_feature)
+            # Step 4.1: Transpose for .... rope?
             key_states = self._transpose_for_scores(key_states)
             value_states = self._transpose_for_scores(value_states)
         else:
+            # Or Step 4.2: If we have past key values, we can use them to save computation
             key_states, value_states = past_key_value
 
-
+        # Step 5: Reshape for Multi-Head Attention
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         past_key_value = (key_states, value_states) if use_cache else None
         
         
         kv_seq_len = key_states.shape[-2]
-
+       
+        # Step 6: Compute Attention Scores
+        # This is like calculating how much each text token should pay attention to each image feature
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
@@ -412,6 +489,7 @@ class LlamaCrossAttention(nn.Module):
                 f" {attn_weights.size()}"
             )
 
+        # Step 7: Apply Attention Mask
         if cross_attn_mask is not None:
             if cross_attn_mask.size() != (bsz, 1, q_len, kv_seq_len):
 
@@ -425,9 +503,13 @@ class LlamaCrossAttention(nn.Module):
                     )
             attn_weights = attn_weights + cross_attn_mask
 
+        # Step 8: Normalize Attention Scores (Convert to Probabilities) and Apply Dropout
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+
+        # Step 9: Generate Attention Output
+        # attention scores are used to combine the values (image features)
         attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -440,11 +522,18 @@ class LlamaCrossAttention(nn.Module):
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
+        # Step 10: Project Attention Output
+        # bring it back to the original size
         if self.config.pretraining_tp > 1:
+            # Step 10.1: If we have multiple GPUs, we need to split the attention output
             attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
+            # Step 10.2: Split the output projection weights
             o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
+            # Step 10.3: Project the attention output
             attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
         else:
+            # Step 10.1: Project Attention Output
+            # This is to project the attention output back to the original size
             attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -456,9 +545,25 @@ class LlamaCrossAttention(nn.Module):
 
 
 class LlamaAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
+    """Multi-headed attention from 'Attention Is All You Need' paper
+    - Query (q_proj): Linear layer for query. Query projection from text
+    - Key (k_proj): Linear layer for key. Key projection from image
+    - Value (v_proj): Linear layer for value. Value projection from image
+    - Output (o_proj): Linear layer for output. Output projection
+    - Rotary position embedding (rotary_emb): Rotary position embedding
+    """
+    '''
+    Handles self-attention within the text sequence. 
+    Data flow: 
+    - Text features are projected to queries, keys, and values
+    - Rotary position embeddings are applied to queries and keys
+    - Attention scores are calculated between all pairs of tokens
+    - These scores determine how much each token should focus on other tokens
+    - The weighted sum of values produces the final output
+    '''
 
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
+        # Step 1: Basic Setup
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -468,18 +573,21 @@ class LlamaAttention(nn.Module):
                 "lead to errors during the forward call if caching is used. Please make sure to provide a `layer_idx` "
                 "when creating this class."
             )
+        # Step 2: Check if this layer should use cross-attention, True if it is the last layer of the first third of the layers, False otherwise
         self.is_cross = self.layer_idx == config.num_hidden_layers//3-1 or self.layer_idx == config.num_hidden_layers//3*2 -1
 
+        # Step 3: Configure Attention Parameters
+        self.attention_dropout = config.attention_dropout  # How much to randomly ignore connections during training
+        self.hidden_size = config.hidden_size  # Size of the hidden representation
+        self.num_heads = config.num_attention_heads  # Number of parallel attention heads
+        self.head_dim = self.hidden_size // self.num_heads  # Size of each attention head
+        self.num_key_value_heads = config.num_key_value_heads  # Number of key/value heads (for efficiency)
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads  # How many heads share the same key/value
+        self.max_position_embeddings = config.max_position_embeddings  # Maximum sequence length
+        self.rope_theta = config.rope_theta  # Base for rotary embeddings
+        self.is_causal = True  # Whether to use causal masking (only look at previous tokens, no future tokens)
 
-        self.attention_dropout = config.attention_dropout
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = config.num_key_value_heads
-        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
-        self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
-        self.is_causal = True
+        # Step 4: Validate that the hidden size is divisible by the number of heads
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
@@ -487,24 +595,36 @@ class LlamaAttention(nn.Module):
                 f" and `num_heads`: {self.num_heads})."
             )
 
-
+        # Step 5: Init the projection layers for attention
         self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
         self.o_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=config.attention_bias)
+        
+        
+        # Step 6: Init RoPE
         self._init_rope()
 
+
     def _init_rope(self):
+        '''
+        Initialize rotary position embeddings based on configuration
+        - If no scaling is provided, use the default RoPE
+        - If scaling is provided, use the specified scaling type and factor
+        '''
         if self.config.rope_scaling is None:
+            # Path 1: Initialize the default RoPE
             self.rotary_emb = LlamaRotaryEmbedding(
                 self.head_dim,
                 max_position_embeddings=self.max_position_embeddings,
                 base=self.rope_theta,
             )
         else:
+            # Path 2: Initialize the specified RoPE
             scaling_type = self.config.rope_scaling["type"]
             scaling_factor = self.config.rope_scaling["factor"]
             if scaling_type == "linear":
+                # Path 2.1: Initialize the linear scaling RoPE
                 self.rotary_emb = LlamaLinearScalingRotaryEmbedding(
                     self.head_dim,
                     max_position_embeddings=self.max_position_embeddings,
@@ -512,6 +632,7 @@ class LlamaAttention(nn.Module):
                     base=self.rope_theta,
                 )
             elif scaling_type == "dynamic":
+                # Path 2.2: Initialize the dynamic scaling RoPE
                 self.rotary_emb = LlamaDynamicNTKScalingRotaryEmbedding(
                     self.head_dim,
                     max_position_embeddings=self.max_position_embeddings,
@@ -531,12 +652,15 @@ class LlamaAttention(nn.Module):
         use_cache: bool = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        bsz, q_len, _ = hidden_states.size()
+        # Step 1: Get Dimensions
+        bsz, q_len, _ = hidden_states.size() # Batch size, sequence length
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
+        # Step 2: Project our hidden states to queries, keys, and values
         if self.config.pretraining_tp > 1:
+            # Check if we have multiple GPUs
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
                 (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
@@ -559,32 +683,39 @@ class LlamaAttention(nn.Module):
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
-
+        # Step 3: Reshape the queries, keys, and values
+        # This splits the representation into multiple heads, each focusing on different aspects
+        # This is done to allow the model to attend to different parts of the input simultaneously
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
- 
+         
+        # Step 4: Get the key-value sequence length
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
+            # If we have cached key-values, add their length
             kv_seq_len += past_key_value[0].shape[-2]      
             
-              
+        # Step 5: Apply RoPE to the queries and keys
         # cos, sin = self.rotary_emb(value_states, position_ids)
         cos, sin = self.rotary_emb(value_states,seq_len=position_ids.max() + 1)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
    
+        # Step 6: If we have cached key-values, concatenate them with the new key-values. Useful for faster generation/decoding
         if past_key_value is not None:
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)        
         past_key_value = (key_states, value_states) if use_cache else None
 
-
-
+        # Step 7: Repeat the key-values for each group of heads if needed...?
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
+        # Step 8: Compute the attention scores. How much each token should pay attention to each other tokens
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
+        # Step 9: Apply the attention mask if provided
+        # this mask out certain positions (e.g. padding tokens or future tokens)
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
@@ -592,28 +723,35 @@ class LlamaAttention(nn.Module):
                 )
             attn_weights = attn_weights + attention_mask
 
+        # Step 10: Normalize the attention scores (convert to probabilities) and apply dropout
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+
+        # Step 11: Generate attention output. Use the attention scores to weight the values
         attn_output = torch.matmul(attn_weights, value_states)
 
+        # Step 12: Validate output shape
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
                 f" {attn_output.size()}"
             )
 
+        # Step 13: Reshape the output
+        # Combine the heads back together
         attn_output = attn_output.transpose(1, 2).contiguous()
-
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
+        # Step 14: Project the output back to the original size
         if self.config.pretraining_tp > 1:
             attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
             o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
             attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
         else:
             attn_output = self.o_proj(attn_output)
-
+        
+        # Step 15: Return the output, attention weights (if requested), and cached key-values
         if not output_attentions:
             attn_weights = None
 
@@ -629,6 +767,11 @@ class LlamaSdpaAttention(LlamaAttention):
     `LlamaAttention` as the weights of the module stays untouched. The only changes are on the forward pass to adapt to
     SDPA API.
     """
+    '''
+    Handles scaled dot-product attention using torch.nn.functional.scaled_dot_product_attention.
+    Inherits from LlamaAttention.
+    Optimized version using torch's scaled dot product attention.
+    '''
 
     # Adapted from LlamaAttention.forward
     def forward(
@@ -714,42 +857,75 @@ LLAMA_ATTENTION_CLASSES = {
 
 
 class LlamaDecoderLayer(nn.Module):
+    '''
+    Main transformer layer
+    Contains:
+    - Self-attention (self_attn): Handles self-attention between text tokens
+    - Cross-attention (optional): Handles cross-attention between text and image
+    - MLP (mlp): Handles feed-forward network
+    - Layer normalization (input_layernorm, post_attention_layernorm): Handles normalization
+    - Residual connections (residual, residual1): Handles residual connections
+    '''
     def __init__(self, config: LlamaConfig, layer_idx: int):
+        # Step 1: Basic setup - initialize the layer with configuration and layer index
         super().__init__()
         self.hidden_size = config.hidden_size
      
-        self.layer_idx = layer_idx
+        self.layer_idx = layer_idx # What layer this is in the stack of layers
         self.config = config
+        
+        # Step 2: Create the self-attention module based on the implementation type (eager or sdpa)
+        # This is the part that lets the model look at previous words to understand context
         self.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
 
+        # Step 3: Set ViT layer selection strategy and image-text fusion strategy
         self.layer_using_strategy = config.layer_using_strategy    
         self.layer_fusing_strategy = config.layer_fusing_strategy   
+        
+        # Step 4: Check if this layer needs X-attention
+        # Dependent on the strategy, determine where and if this layer should use cross-attention (looking at images)
+        # Different strategies place cross-attention at different layers (eg. latter would do cross-attention at the last 12 layers)
         if "I" in self.layer_fusing_strategy:
+            # Strategy 1 (Single): Only at layer 18/24
             if self.layer_using_strategy == '18':
                 self.has_cross = layer_idx in [int(18*config.num_hidden_layers/24-1)]
+            # Strategy 2 (Double): At layers 3/24 and 18/24 
             if self.layer_using_strategy == '3-18':
                 self.has_cross = layer_idx in [int(3*config.num_hidden_layers/24-1),int(18*config.num_hidden_layers/24-1)]    
+            # Strategy 3 (Triple): At layers 3/24, 18/24, and 23/24
             if self.layer_using_strategy == '3-18-23':
                 self.has_cross = layer_idx in [int(3*config.num_hidden_layers/24-1),int(18*config.num_hidden_layers/24-1),int(23*config.num_hidden_layers/24-1)]
+            # Strategy 4 (Former): In the first 12 layers
             if self.layer_using_strategy == 'former':                 
                 self.has_cross = layer_idx in [0,1,2,3,4,5,6,7,8,9,10,11]
+            # Strategy 5 (Latter): In the last 12 layers
             if self.layer_using_strategy == 'latter':
                 self.has_cross = layer_idx in [config.num_hidden_layers - 12,config.num_hidden_layers - 11, config.num_hidden_layers - 10, config.num_hidden_layers - 9, config.num_hidden_layers - 8, config.num_hidden_layers - 7, config.num_hidden_layers - 6, config.num_hidden_layers - 5, config.num_hidden_layers - 4, config.num_hidden_layers - 3, config.num_hidden_layers - 2, config.num_hidden_layers - 1]
-
+            # Strategy 6: In both first and last 12 layers
             if self.layer_using_strategy == 'all':
                 self.has_cross = layer_idx in [0,1,2,3,4,5,6,7,8,9,10,11,config.num_hidden_layers - 12, config.num_hidden_layers - 11, config.num_hidden_layers - 10, config.num_hidden_layers - 9, config.num_hidden_layers - 8, config.num_hidden_layers - 7, config.num_hidden_layers - 6, config.num_hidden_layers - 5, config.num_hidden_layers - 4, config.num_hidden_layers - 3, config.num_hidden_layers - 2, config.num_hidden_layers - 1]
         else:
+            # If no image fusion strategy is specified, this layer doesn't use cross-attention
             self.has_cross = False
 
+        # Step 5: If this layer uses cross-attention and the fusion strategy is "I_M" (Internal Modular)
+        # Create the necessary modules for cross-attention and fusion
         if self.has_cross and self.layer_fusing_strategy=="I_M":
             # only Internal Modualr Fusion needs extra modules in the LLM.
+            # Create zero-initialized modules for fusion (these start with zero weights)
             self.ucross_xattn = zero_init(self.layer_idx)
+            # Create cross-attention module (lets text look at image features)
             self.ucross_attn = LlamaCrossAttention(config=self.config, layer_idx=self.layer_idx)
+            # Create another zero-initialized module for MLP fusion
             self.ucross_xmlp = zero_init(self.layer_idx)
+            # Create MLP for cross-attention output
             self.ucross_mlp = LlamaMLP(config)
 
+        # Step 6: Init standard MLP (feed-forward network) and Norm layers
         self.mlp = LlamaMLP(config)
+        # Normalize inputs before self-attention
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # Normalize after self-attention but before MLP
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
 
@@ -784,14 +960,16 @@ class LlamaDecoderLayer(nn.Module):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
-
+        # Process the layer. PAths: Cross-attention or not
+        # Path A: Standard processing without cross-attention but with "I_D" (Direct Insertion) strategy
         if not self.has_cross or "I_D" in self.layer_fusing_strategy:
+            # Step 1: Res Connection: Initialize residual connection!!! --> From DeepStack paper
             residual = hidden_states
 
+            # Normalize the input
             hidden_states = self.input_layernorm(hidden_states)
 
-
-
+            # Step 2: Apply self-attention (look at previous words)
             hidden_states, self_attn_weights, present_key_value = self.self_attn(
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
@@ -801,30 +979,40 @@ class LlamaDecoderLayer(nn.Module):
                 use_cache=use_cache,
                 **kwargs,
                 )
+            # Step 3: Res Connection: Add the residual connection (the oringal information + processed hidden state)
             hidden_states = residual + hidden_states
-
-
 
             # Fully Connected
+            # Step 4: Apply the MLP (feed-forward network)
+            # Res Connection: Save the input for another residual connection
             residual = hidden_states
+            # Normalize after self-attention
             hidden_states = self.post_attention_layernorm(hidden_states)
+            # Apply the MLP
             hidden_states = self.mlp(hidden_states)
+            # Res Connection: Add the residual connection (the oringal information + processed hidden state)
             hidden_states = residual + hidden_states
 
+            # Step 5: Prepare the output
             outputs = (hidden_states,)
 
+            # Include attention weights if requested
             if output_attentions:
                 outputs += (self_attn_weights,)
 
+            # Include cached key-values if requested (for faster generation)
             if use_cache:
                 outputs += (present_key_value,)
 
             return outputs
+        # Path B: Processing with cross-attention (for "I_M" - Internal Modular strategy)
         else:
-
+            # Step 1: Res Connection: Save the input for the final residual connection
             residual = hidden_states
+            # Res Connection: Normalize the input. but make residual1 to use this for now hidden_states
             residual1 = self.input_layernorm(hidden_states)
 
+            # Step 2: Apply cross-attention (look at image features)
             hidden_states, self_ucross_attn_weights, present_key_value_cross = self.ucross_attn(
                     hidden_states=residual1,
                     image_feature = image_feature,
@@ -837,15 +1025,17 @@ class LlamaDecoderLayer(nn.Module):
             )    
             
             # w zero
-
+            # Step 3: Apply the zero-initialized fusion module and add residual
+            # This gradually learns how to combine text and image information
             hidden_states = residual1 + self.ucross_xattn(hidden_states)
 
-
+            # Step 4: Apply the cross-attention MLP with fusion
+            # Res Connection: Again make a new res con, but now for ucross_xmlp ????
             residual1 = hidden_states
+            # Apply MLP and fusion, then add residual
             hidden_states = residual1 + self.ucross_xmlp(self.ucross_mlp(hidden_states))
 
-
-
+            # Step 5: Apply self-attention (look at previous words)
             hidden_states, self_attn_weights, present_key_value = self.self_attn(
                     hidden_states=hidden_states,
                     attention_mask=attention_mask,
@@ -856,25 +1046,31 @@ class LlamaDecoderLayer(nn.Module):
                     **kwargs,
             )  
             
+            # Res Connection: Add the ORIGINAL residual connection
             hidden_states = residual + hidden_states
 
+            # Step 6: Apply the final MLP
+            # Normalize after self-attention
             hidden_states = self.post_attention_layernorm(hidden_states)
 
             # Fully Connected
+            # Apply the MLP
             mlp_output = self.mlp(hidden_states)
+            # Why do we add mlp out with hidden_states??
             hidden_states = mlp_output + hidden_states
 
-
+            # Step 7: Prepare the output
             outputs = (hidden_states,)
 
+            # Include attention weights if requested
             if output_attentions:
                 outputs += (self_attn_weights,)
 
+            # Include cached key-values if requested (for faster generation)
             if use_cache:
                 outputs += (present_key_value+present_key_value_cross,)
 
             return outputs
-        
 
 
 LLAMA_START_DOCSTRING = r"""
@@ -899,6 +1095,13 @@ LLAMA_START_DOCSTRING = r"""
     LLAMA_START_DOCSTRING,
 )
 class LlamaPreTrainedModel(PreTrainedModel):
+    '''
+    Base class for all Llama models
+    Handles:
+        - Weight initialization (function: _init_weights)
+        - Model configuration (config_class)
+        - Common utilities (base_model_prefix, supports_gradient_checkpointing, _no_split_modules, _skip_keys_device_placement, _supports_flash_attn_2, _supports_sdpa, _supports_cache_class)
+    '''
     config_class = LlamaConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
@@ -1005,6 +1208,15 @@ class LlamaModel(LlamaPreTrainedModel):
     Args:
         config: LlamaConfig
     """
+
+    '''
+    Main model architecture
+    Features:
+        - Token embeddings (embed_tokens): Converts input IDs to embeddings
+        - Stack of decoder layers (layers): Contains multiple LlamaDecoderLayer instances
+        - Final normalization (norm): Applies final layer normalization
+        - Support for different fusion strategies (self.layer_using_strategy)
+    '''
 
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
@@ -1272,6 +1484,14 @@ class LlamaModel(LlamaPreTrainedModel):
 
 
 class LlamaForCausalLM(LlamaPreTrainedModel):
+
+    '''
+    Language model with causal masking
+    Adds:
+        - Language modeling head (lm_head): Applies final linear layer to hidden states
+        - Generation utilities (prepare_inputs_for_generation, _reorder_cache, _prepare_past_key_values)
+        - Loss computation (forward, prepare_inputs_for_generation)
+    '''
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
@@ -1480,6 +1700,13 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
     LLAMA_START_DOCSTRING,
 )
 class LlamaForSequenceClassification(LlamaPreTrainedModel):
+    '''
+    Classification head on top of LLaMA
+    Adds:
+        - Classification head (score): Applies final linear layer to hidden states
+        - Sequence classification logic (forward): Handles sequence classification
+        - Loss computation for classification (forward): Computes loss for classification
+    '''
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
