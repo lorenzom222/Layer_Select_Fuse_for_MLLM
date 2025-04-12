@@ -1,22 +1,4 @@
-import os
-import torch
-import torch.nn as nn
-import numpy as np
-from torch.utils.data import Sampler
-
-from transformers import Trainer
-from transformers.trainer import (
-    is_sagemaker_mp_enabled,
-    get_parameter_names,
-    has_length,
-    ALL_LAYERNORM_LAYERS,
-    logger,
-)
-from typing import List, Optional
-
-
-
-
+# /home/aac/Layer_Select_Fuse_for_MLLM/llava/train/llava_trainer.py
 
 import os
 import torch
@@ -36,6 +18,10 @@ from transformers.trainer import (
 from typing import List, Optional
 import shutil
 
+from transformers.trainer import _is_peft_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.modeling_utils import unwrap_model
+from llava.model.metrics.cka import compute_cka_vit_llm
 
 
 def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
@@ -194,8 +180,91 @@ class LLaVATrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.previous_grad_norm = None
 
-    
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+        Modified to capture hidden states.
+        """
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
 
+        # Force model to output hidden states
+        inputs['output_hidden_states'] = True
+        outputs = model(**inputs)
+
+        # ---- Compute hidden states vs. ViT outputs
+        if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
+            
+            # 1. Get vision tower
+            if hasattr(model, "module"):   # for DDP-wrapped model
+                vision_tower = model.module.get_vision_tower()
+            else:
+                vision_tower = model.get_vision_tower()
+            
+            # 2. Run images through ViT
+            images = inputs['images']  # shape [B, channels, height, width]
+            with torch.no_grad():
+                image_features = vision_tower(images)  # e.g. [B, P, D]
+            
+            # 3. Get image token mask
+            image_token_mask = inputs.get('image_token_mask', None)
+            if image_token_mask is None:
+                # If no mask provided, use all tokens
+                image_token_mask = torch.ones_like(outputs.hidden_states[0][:, :, 0], dtype=torch.bool)
+            
+            # 4. Loop over each layer's hidden states
+            cka_scores = {}
+            for layer_idx, layer_hidden_states in enumerate(outputs.hidden_states):
+                # Select only the hidden states corresponding to image tokens
+                image_hidden_states = layer_hidden_states[image_token_mask].reshape(
+                    image_features.shape[0], -1, layer_hidden_states.shape[-1]
+                )
+                
+                # Now call your compute_cka_vit_llm function
+                cka_score = compute_cka_vit_llm(
+                    visual_features=image_features,
+                    hidden_states=image_hidden_states,
+                    pool_type="mean",    # or "max"
+                    debiased=False       # or True
+                )
+                cka_scores[f"layer_{layer_idx}"] = cka_score
+            
+            # 5. Log the CKA scores
+            if self.state.global_step % self.args.logging_steps == 0:
+                for layer, score in cka_scores.items():
+                    # Log to Trainer logs
+                    self.log({f"cka/{layer}": score})
+                    
+                    # If using W&B
+                    if self.args.report_to == "wandb":
+                        import wandb
+                        wandb.log({f"cka/{layer}": score, "global_step": self.state.global_step})
+        
+        # ---- The rest is your normal loss logic
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            unwrapped_model = unwrap_model(model)
+            if _is_peft_model(unwrapped_model):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        return (loss, outputs) if return_outputs else loss
 
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
