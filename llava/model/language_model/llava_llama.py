@@ -29,6 +29,7 @@ from transformers.generation.utils import GenerateOutput
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 from llava.mm_utils import unbiased_cka
 
+import wandb
 class LlavaConfig(LlamaConfig):
     model_type = "llava_llama"
 
@@ -151,37 +152,61 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         # TODO: 
         # 1. CKA for each batch separately, since it's not meaningful to compute CKA across unaligned (image, prompt) pairs
         # 2. LLM input should be text only, no image ; when computing CKA. 
-        #    - dummy image tokens would change (text) hidden states.
+        #    - dummy image tokens would change (text) hidden states. It may change the distrubtions. So A) we either just training vanilla LLM, or B) we need to find best dummy tokens to not disturb the text hidden states.
+        # 3. Right we are comparing not just image embeds to text embeds, but it's doing for across the batch. So effectively we are comparing say like 5 image embeds to 5 text embeds where 4/5 have nothing to do with each other. 
+        # EX: A batch of 5 images, 4 are unrelated to the text prompt. More specific Ex: There is 1 image of a dog tied to 1 prompt about a dog + answer and this is one input in a batch, but there are 4 other inputs in the batch that have nothing to do with the dog. How do we fix this?
         # NOTE:
         # Currently it's comparing input image embeddings to hidden state image embeddings from each layer (which is not what we want).
-        # 
+        # We want to compare the image input embeddings (from the visual encoder) to 
+        #   the !!text!! token hidden states, layer by layer.
+        # We dont need to worry about patch or special tokens since you need to init them with flags and they are only used for image
+        # So we can just mask them out.
     
         cka_similarities = None
         if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
             cka_similarities = {}
-            image_token_mask_bool = image_token_mask.bool()
-            if image_token_mask_bool.any(): 
-                image_input_embeds = inputs_embeds[image_token_mask_bool] # [bsz, n_image_patches, d_model]
-                image_input_embeds = image_input_embeds.view(-1, image_input_embeds.size(-1)) # [bsz * n_image_patches, d_model]
-                for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):
-                    layer_image_hidden_states = layer_hidden_state[image_token_mask_bool]
-                    layer_image_hidden_states = layer_image_hidden_states.view(-1, layer_image_hidden_states.size(-1))
-                    if image_input_embeds.shape[0] == layer_image_hidden_states.shape[0] and image_input_embeds.shape[0] > 1:
+            
+            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [batch, seq_len, hidden_dim]
+                layer_ckas = []
+                
+                # Loop over each sample in the batch
+                hl_bsz = layer_hidden_state.shape[0]
+                for sample_idx in range(hl_bsz):
+                    # Get text embeddings for this batch
+                    text_mask = ~image_token_mask[sample_idx]  # shape: [seq_len]
+                    text_embeds = layer_hidden_state[sample_idx][text_mask]  # shape: [n_text_tokens, hidden_dim]
+                    
+                    # Get image embeddings for this batch
+                    image_mask = image_token_mask[sample_idx]  # shape: [seq_len]
+                    image_embeds = layer_hidden_state[sample_idx][image_mask]  # shape: [n_image_patches, hidden_dim]
+                    
+                    # Only compute CKA if we have both text and image embeddings
+                    if text_embeds.shape[0] > 0 and image_embeds.shape[0] > 0:
                         try:
-                            cka_val = unbiased_cka(image_input_embeds, layer_image_hidden_states)
-                            cka_similarities[f'layer_{layer_idx}'] = cka_val.item()
+                            cka_val = unbiased_cka(text_embeds, image_embeds)
+                            layer_ckas.append(cka_val.item())
                         except Exception as e:
-                            print(f"Warning: CKA computation failed for layer {layer_idx}: {e}")
-                            cka_similarities[f'layer_{layer_idx}'] = None
-                    elif image_input_embeds.shape[0] <= 1:
-                        cka_similarities[f'layer_{layer_idx}'] = None
+                            print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
+                            layer_ckas.append(None)
                     else:
-                        print(f"Warning: Shape mismatch for CKA in layer {layer_idx}. Input: {image_input_embeds.shape}, Layer: {layer_image_hidden_states.shape}. Skipping.")
-                        cka_similarities[f'layer_{layer_idx}'] = None
-            else:
-                num_layers = len(outputs.hidden_states) if outputs.hidden_states else 0
-                for layer_idx in range(num_layers):
-                     cka_similarities[f'layer_{layer_idx}'] = None
+                        layer_ckas.append(None)
+
+                # Aggregate layer CKA values per sample in batch via mean
+                # So this is: Per each layer, we have a list of CKA values for each sample in the batch.
+                # That means we compare each img_embed to text_embed for each sample in the batch --> Got CKA for that
+                valid_layer_ckas = [sample_ckas for sample_ckas in layer_ckas if sample_ckas is not None] # [bsz] -> Just ckas that were able to be computed
+                if valid_layer_ckas:
+                    layer_mean = sum(valid_layer_ckas) / len(valid_layer_ckas)
+                else:
+                    layer_mean = None
+            
+                        
+                cka_similarities[f'layer_{layer_idx}'] = layer_mean
+                if layer_mean is not None:
+                    wandb.log({
+                        f"cka/layer_{layer_idx}": layer_mean,
+                            "step": self.state.global_step
+                    })
 
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:

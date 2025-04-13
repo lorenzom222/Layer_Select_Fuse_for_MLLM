@@ -133,6 +133,10 @@ class TrainingArguments(transformers.TrainingArguments):
     cross_attn_lr: Optional[float] = None
     wandb_name : Optional[str] = field(default=None)
     group_by_modality_length: bool = field(default=False)
+    compute_cka: bool = field(
+        default=False,
+        metadata={"help": "Whether to compute CKA (Centered Kernel Alignment) during training"}
+    )
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
