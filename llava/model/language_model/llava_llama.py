@@ -27,7 +27,9 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
+from llava.mm_utils import unbiased_cka
 
+import wandb
 class LlavaConfig(LlamaConfig):
     model_type = "llava_llama"
 
@@ -70,8 +72,16 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         return_dict: Optional[bool] = None,
         images_features: Optional[List[torch.FloatTensor]] = None,
         image_token_mask: Optional[torch.FloatTensor] = None,
+        compute_cka: bool = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
+        # if compute_cka:
+        # Then compare image_features 
+            
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        original_output_hidden_states = output_hidden_states
+        output_hidden_states = True if compute_cka else (output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states)
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         image_features_list = None
         image_features_f = None
@@ -125,15 +135,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
 
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         outputs = self.model(
-            image_token_mask = image_token_mask,
-            images_features = images_features,
+            image_token_mask=image_token_mask,
+            images_features=images_features,
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -144,7 +148,66 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+
+        # TODO: 
+        # 1. CKA for each batch separately, since it's not meaningful to compute CKA across unaligned (image, prompt) pairs
+        # 2. LLM input should be text only, no image ; when computing CKA. 
+        #    - dummy image tokens would change (text) hidden states. It may change the distrubtions. So A) we either just training vanilla LLM, or B) we need to find best dummy tokens to not disturb the text hidden states.
+        # 3. Right we are comparing not just image embeds to text embeds, but it's doing for across the batch. So effectively we are comparing say like 5 image embeds to 5 text embeds where 4/5 have nothing to do with each other. 
+        # EX: A batch of 5 images, 4 are unrelated to the text prompt. More specific Ex: There is 1 image of a dog tied to 1 prompt about a dog + answer and this is one input in a batch, but there are 4 other inputs in the batch that have nothing to do with the dog. How do we fix this?
+        # NOTE:
+        # Currently it's comparing input image embeddings to hidden state image embeddings from each layer (which is not what we want).
+        # We want to compare the image input embeddings (from the visual encoder) to 
+        #   the !!text!! token hidden states, layer by layer.
+        # We dont need to worry about patch or special tokens since you need to init them with flags and they are only used for image
+        # So we can just mask them out.
     
+        cka_similarities = None
+        if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
+            cka_similarities = {}
+            
+            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [batch, seq_len, hidden_dim]
+                layer_ckas = []
+                
+                # Loop over each sample in the batch
+                hl_bsz = layer_hidden_state.shape[0]
+                for sample_idx in range(hl_bsz):
+                    # Get text embeddings for this batch
+                    text_mask = ~image_token_mask[sample_idx]  # shape: [seq_len]
+                    text_embeds = layer_hidden_state[sample_idx][text_mask]  # shape: [n_text_tokens, hidden_dim]
+                    
+                    # Get image embeddings for this batch
+                    image_mask = image_token_mask[sample_idx]  # shape: [seq_len]
+                    image_embeds = layer_hidden_state[sample_idx][image_mask]  # shape: [n_image_patches, hidden_dim]
+                    
+                    # Only compute CKA if we have both text and image embeddings
+                    if text_embeds.shape[0] > 0 and image_embeds.shape[0] > 0:
+                        try:
+                            cka_val = unbiased_cka(text_embeds, image_embeds)
+                            layer_ckas.append(cka_val.item())
+                        except Exception as e:
+                            print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
+                            layer_ckas.append(None)
+                    else:
+                        layer_ckas.append(None)
+
+                # Aggregate layer CKA values per sample in batch via mean
+                # So this is: Per each layer, we have a list of CKA values for each sample in the batch.
+                # That means we compare each img_embed to text_embed for each sample in the batch --> Got CKA for that
+                valid_layer_ckas = [sample_ckas for sample_ckas in layer_ckas if sample_ckas is not None] # [bsz] -> Just ckas that were able to be computed
+                if valid_layer_ckas:
+                    layer_mean = sum(valid_layer_ckas) / len(valid_layer_ckas)
+                else:
+                    layer_mean = None
+            
+                        
+                cka_similarities[f'layer_{layer_idx}'] = layer_mean
+                if layer_mean is not None:
+                    wandb.log({
+                        f"cka/layer_{layer_idx}": layer_mean,
+                            "step": self.state.global_step
+                    })
+
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
@@ -156,28 +219,33 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
             loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
+            output = output + (cka_similarities,)
+            if not original_output_hidden_states and hasattr(outputs, 'hidden_states'):
+                 print("Warning: Requesting CKA without return_dict=True might lead to unexpected output tuple structure.")
+                 pass
             return (loss,) + output if loss is not None else output
 
-        return CausalLMOutputWithPast(
+        output_obj = CausalLMOutputWithPast(
             loss=loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
+            hidden_states=outputs.hidden_states if (original_output_hidden_states or compute_cka) else None,
             attentions=outputs.attentions,
         )
+        if cka_similarities is not None:
+            output_obj.cka_similarities = cka_similarities
+            
+        return output_obj
 
 
     @torch.no_grad()
@@ -193,7 +261,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         if "inputs_embeds" in kwargs:
             raise NotImplementedError("`inputs_embeds` is not supported")
         
-        ##############
         image_features_list = None
 
         if "E" in self.config.layer_fusing_strategy:

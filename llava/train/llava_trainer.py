@@ -194,9 +194,15 @@ class LLaVATrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.previous_grad_norm = None
 
-    
-
-
+    def training_step(self, model, inputs):
+        """
+        Perform a training step on a batch of inputs.
+        """
+        # Add compute_cka parameter to inputs
+        inputs['compute_cka'] = self.args.compute_cka
+        
+        # Call the parent class's training_step
+        return super().training_step(model, inputs)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):

@@ -18,7 +18,7 @@ class MSCrossAttnBlock(nn.Module):
         self.query_norm = norm_layer(d_model)
         self.feat_norm = norm_layer(d_model)
         self.gamma1 = nn.Parameter(init_values * torch.ones((d_model)), requires_grad=True)
-
+        
         self.norm1 = norm_layer(d_model)
         self.self_attn = MSDeformAttn(d_model=d_model, n_levels=1, n_heads=n_heads, n_points=n_points)
         self.gamma2 = nn.Parameter(init_values * torch.ones((d_model)), requires_grad=True)

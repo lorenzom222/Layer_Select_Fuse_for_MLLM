@@ -4,6 +4,7 @@ import base64
 import torch
 import math
 import ast
+import torch.nn.functional as F
 
 from transformers import StoppingCriteria
 from llava.constants import IMAGE_TOKEN_INDEX
@@ -246,3 +247,73 @@ class KeywordsStoppingCriteria(StoppingCriteria):
         for i in range(output_ids.shape[0]):
             outputs.append(self.call_for_batch(output_ids[i].unsqueeze(0), scores))
         return all(outputs)
+
+# Function to compute the Hilbert-Schmidt Independence Criterion
+def hsic(K, L):
+    """
+    Computes the Hilbert-Schmidt Independence Criterion (HSIC).
+    Args:
+        K (torch.Tensor): First Gram matrix (n x n).
+        L (torch.Tensor): Second Gram matrix (n x n).
+    Returns:
+        torch.Tensor: The HSIC value.
+    """
+    n = K.shape[0]
+    H = torch.eye(n, device=K.device) - 1.0 / n * torch.ones(n, n, device=K.device)
+    K_c = torch.matmul(torch.matmul(H, K), H)
+    L_c = torch.matmul(torch.matmul(H, L), H)
+    # The Frobenius norm squared is equivalent to the trace of K_c.T @ L_c
+    # For symmetric matrices K_c, L_c, this is trace(K_c @ L_c)
+    criterion = torch.trace(torch.matmul(K_c, L_c))
+    return criterion / ((n - 1) ** 2) # Unbiased estimator factor
+
+# Function to compute the Centered Kernel Alignment (CKA) similarity (unbiased)
+def unbiased_cka(features_x, features_y):
+    """
+    Computes the unbiased Centered Kernel Alignment (CKA) similarity between two feature matrices.
+    Assumes features_x and features_y have the same number of samples (rows).
+    Features are expected to be of shape (n_samples, n_features).
+
+    Args:
+        features_x (torch.Tensor): First feature matrix (n_samples, n_features_x).
+        features_y (torch.Tensor): Second feature matrix (n_samples, n_features_y).
+
+    Returns:
+        torch.Tensor: The CKA similarity value.
+    """
+    # Compute Gram matrices using a linear kernel
+    # K = X @ X.T
+    # L = Y @ Y.T
+    # Ensure features are float32 for stable matmul
+    features_x = features_x.float()
+    features_y = features_y.float()
+
+    # Reshape if necessary (e.g., if features are flattened image patches or tokens)
+    if features_x.dim() > 2:
+        features_x = features_x.view(features_x.shape[0], -1)
+    if features_y.dim() > 2:
+        features_y = features_y.view(features_y.shape[0], -1)
+
+    # It's crucial that the number of samples (first dimension) matches
+    assert features_x.shape[0] == features_y.shape[0], "Number of samples must match for CKA"
+
+    # Center features before computing the Gram matrix (equivalent to centering Gram matrix later)
+    # This helps with numerical stability for HSIC calculation
+    features_x = features_x - features_x.mean(dim=0, keepdim=True)
+    features_y = features_y - features_y.mean(dim=0, keepdim=True)
+
+    # Compute Gram matrices
+    gram_x = torch.matmul(features_x, features_x.t())
+    gram_y = torch.matmul(features_y, features_y.t())
+
+    # Compute HSIC values
+    hsic_xy = hsic(gram_x, gram_y)
+    hsic_xx = hsic(gram_x, gram_x)
+    hsic_yy = hsic(gram_y, gram_y)
+
+    # Compute CKA
+    # Add a small epsilon for numerical stability in case hsic_xx or hsic_yy are close to zero
+    epsilon = 1e-5
+    cka_value = hsic_xy / (torch.sqrt(hsic_xx * hsic_yy + epsilon))
+
+    return cka_value

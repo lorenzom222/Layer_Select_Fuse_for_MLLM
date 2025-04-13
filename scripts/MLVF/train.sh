@@ -16,8 +16,8 @@ FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 
 
 # Pretraining
-#export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
-accelerate launch llava/train/ .py \
+# export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
+accelerate launch llava/train/train.py \
     --model_name_or_path ${MODEL_PATH} \
     --version plain \
     --data_path ${PRETRAIN_DATA_PATH} \
@@ -50,43 +50,45 @@ accelerate launch llava/train/ .py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}
+    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME} \
+    --compute_cka True
 #--max_steps 10 \
-# Fine-tuning
-export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
-accelerate launch llava/train/train.py \
-    --model_name_or_path ${MODEL_PATH} \
-    --version v1 \
-    --data_path ${FINETUNE_DATA_PATH} \
-    --image_folder ${FINETUNE_IMAGE_FOLDER} \
-    --vision_tower ${VISION_TOWER} \
-    --pretrain_mm_mlp_adapter ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}/mm_projector.bin \
-    --mm_projector_type mlp2x_gelu \
-    --mm_vision_select_layer -2 \
-    --mm_use_im_start_end False \
-    --mm_use_im_patch_token False \
-    --layer_using_strategy ${USING_STRATEGY} \
-    --layer_fusing_strategy ${FUSING_STRATEGY} \
-    --image_aspect_ratio pad \
-    --group_by_modality_length True \
-    --bf16 True \
-    --output_dir ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME} \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 8 \
-    --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --save_steps 1000 \
-    --save_total_limit 5 \
-    --learning_rate 2e-5 \
-    --weight_decay 0. \
-    --warmup_ratio 0.03 \
-    --lr_scheduler_type "cosine" \
-    --logging_steps 1 \
-    --log_level warning \
-    --model_max_length 2048 \
-    --dataloader_num_workers 4 \
-    --lazy_preprocess True \
-    --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME}#     --max_steps 10 \
+# # Fine-tuning
+# export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
+# accelerate launch llava/train/train.py \
+#     --model_name_or_path ${MODEL_PATH} \
+#     --version v1 \
+#     --data_path ${FINETUNE_DATA_PATH} \
+#     --image_folder ${FINETUNE_IMAGE_FOLDER} \
+#     --vision_tower ${VISION_TOWER} \
+#     --pretrain_mm_mlp_adapter ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}/mm_projector.bin \
+#     --mm_projector_type mlp2x_gelu \
+#     --mm_vision_select_layer -2 \
+#     --mm_use_im_start_end False \
+#     --mm_use_im_patch_token False \
+#     --layer_using_strategy ${USING_STRATEGY} \
+#     --layer_fusing_strategy ${FUSING_STRATEGY} \
+#     --image_aspect_ratio pad \
+#     --group_by_modality_length True \
+#     --bf16 True \
+#     --output_dir ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME} \
+#     --num_train_epochs 1 \
+#     --per_device_train_batch_size 1 \
+#     --per_device_eval_batch_size 4 \
+#     --gradient_accumulation_steps 8 \
+#     --evaluation_strategy "no" \
+#     --save_strategy "steps" \
+#     --save_steps 1000 \
+#     --save_total_limit 5 \
+#     --learning_rate 2e-5 \
+#     --weight_decay 0. \
+#     --warmup_ratio 0.03 \
+#     --lr_scheduler_type "cosine" \
+#     --logging_steps 1 \
+#     --log_level warning \
+#     --model_max_length 2048 \
+#     --dataloader_num_workers 4 \
+#     --lazy_preprocess True \
+#     --report_to wandb \
+#     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-finetune-${USING_STRATEGY}-${MODEL_NAME}
+# #     --max_steps 10 \
