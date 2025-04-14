@@ -1,5 +1,5 @@
 #!/bin/bash
-BASE_MODEL_NAME="test"
+BASE_MODEL_NAME="test_cka"
 
 # Define common variables
 FUSING_STRATEGY="I_D" # Options: E_D, E_M, I_D, I_M
@@ -14,6 +14,8 @@ VISION_TOWER="google/siglip-so400m-patch14-384" # google/siglip-so400m-patch14-3
 FINETUNE_DATA_PATH="./playground/data/LLaVA-Instruct-150K/llava_v1_5_mix665k.json" # ./playground/Cambrian-10M/jsons/cleaned_Cambrian737k.json
 FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 
+# Generate timestamp for wandb
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Pretraining
 # export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
@@ -50,7 +52,7 @@ accelerate launch llava/train/train.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME} \
+    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
     --compute_cka True
 #--max_steps 10 \
 # # Fine-tuning

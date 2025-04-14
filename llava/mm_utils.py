@@ -267,53 +267,94 @@ def hsic(K, L):
     criterion = torch.trace(torch.matmul(K_c, L_c))
     return criterion / ((n - 1) ** 2) # Unbiased estimator factor
 
-# Function to compute the Centered Kernel Alignment (CKA) similarity (unbiased)
-def unbiased_cka(features_x, features_y):
+def align_embeddings_for_cka(features_x: torch.Tensor, features_y: torch.Tensor, pooling: str = 'mean', projection_size: int = 64):
     """
-    Computes the unbiased Centered Kernel Alignment (CKA) similarity between two feature matrices.
-    Assumes features_x and features_y have the same number of samples (rows).
-    Features are expected to be of shape (n_samples, n_features).
+    Aligns two feature matrices by applying pooling if their number of samples (rows) differ.
 
     Args:
-        features_x (torch.Tensor): First feature matrix (n_samples, n_features_x).
-        features_y (torch.Tensor): Second feature matrix (n_samples, n_features_y).
+        features_x (torch.Tensor): First feature matrix of shape [N_x, D]
+        features_y (torch.Tensor): Second feature matrix of shape [N_y, D]
+        pooling (str): Pooling strategy to apply if N_x ≠ N_y. Options: 'mean', 'max', or 'none'.
 
     Returns:
-        torch.Tensor: The CKA similarity value.
+        Tuple[torch.Tensor, torch.Tensor]: Aligned feature matrices of shape [N, D] or [1, D]
     """
-    # Compute Gram matrices using a linear kernel
-    # K = X @ X.T
-    # L = Y @ Y.T
-    # Ensure features are float32 for stable matmul
     features_x = features_x.float()
     features_y = features_y.float()
 
-    # Reshape if necessary (e.g., if features are flattened image patches or tokens)
     if features_x.dim() > 2:
         features_x = features_x.view(features_x.shape[0], -1)
     if features_y.dim() > 2:
         features_y = features_y.view(features_y.shape[0], -1)
 
-    # It's crucial that the number of samples (first dimension) matches
-    assert features_x.shape[0] == features_y.shape[0], "Number of samples must match for CKA"
+    if features_x.shape[0] != features_y.shape[0]:
+        if pooling == 'mean':
+            features_x = features_x.mean(dim=0, keepdim=True)
+            features_y = features_y.mean(dim=0, keepdim=True)
+            # print("Features X shape after mean pooling:", features_x.shape)
+            # print("Features Y shape after mean pooling:", features_y.shape)
+        elif pooling == 'max':
+            features_x = features_x.max(dim=0, keepdim=True).values
+            features_y = features_y.max(dim=0, keepdim=True).values
+            # print("Features X shape after max pooling:", features_x.shape)
+            # print("Features Y shape after max pooling:", features_y.shape)
+        elif pooling == 'none':
+            raise ValueError(
+                f"CKA input mismatch: features_x has {features_x.shape[0]} samples, "
+                f"features_y has {features_y.shape[0]} — set pooling='mean' or 'max' to resolve."
+            )
+        elif pooling == 'interpolate':
+            # Resize to fixed length using linear interpolation (1D)
+            def resize(tensor, N):
+                tensor = tensor.unsqueeze(0).transpose(1, 2)  # [1, D, L]
+                tensor = F.interpolate(tensor, size=N, mode='linear', align_corners=False)
+                return tensor.squeeze(0).transpose(0, 1)  # [N, D]
 
-    # Center features before computing the Gram matrix (equivalent to centering Gram matrix later)
-    # This helps with numerical stability for HSIC calculation
-    features_x = features_x - features_x.mean(dim=0, keepdim=True)
-    features_y = features_y - features_y.mean(dim=0, keepdim=True)
+            features_x = resize(features_x, projection_size)
+            features_y = resize(features_y, projection_size)
+            # print(f"Interpolated to shape: {features_x.shape}")
+        else:
+            raise ValueError(f"Invalid pooling type: '{pooling}'. Choose 'mean', 'max', or 'none'.")
+
+    return features_x, features_y
+
+
+# Function to compute the Centered Kernel Alignment (CKA) similarity (unbiased)
+def unbiased_cka(features_x, features_y, pooling: str = 'interpolate'):
+    """
+    Computes the unbiased Centered Kernel Alignment (CKA) similarity between two feature matrices.
+    If the number of samples (rows) does not match, applies pooling (mean or max) to reduce each to a single vector.
+
+    Args:
+        features_x (torch.Tensor): First feature matrix (n_samples_x, n_features).
+        features_y (torch.Tensor): Second feature matrix (n_samples_y, n_features).
+        pooling (str): Pooling strategy if n_samples mismatch. Options: 'mean' (default), 'max', 'none'.
+
+    Returns:
+        torch.Tensor: The CKA similarity value.
+    """
+    # print("Features X shape before alignment:", features_x.shape)
+    # print("Features Y shape before alignment:", features_y.shape)
+    features_x, features_y = align_embeddings_for_cka(features_x, features_y, pooling=pooling)
+
+
 
     # Compute Gram matrices
     gram_x = torch.matmul(features_x, features_x.t())
     gram_y = torch.matmul(features_y, features_y.t())
 
-    # Compute HSIC values
+    # Compute HSIC
     hsic_xy = hsic(gram_x, gram_y)
     hsic_xx = hsic(gram_x, gram_x)
     hsic_yy = hsic(gram_y, gram_y)
 
-    # Compute CKA
-    # Add a small epsilon for numerical stability in case hsic_xx or hsic_yy are close to zero
+    # CKA similarity
     epsilon = 1e-5
     cka_value = hsic_xy / (torch.sqrt(hsic_xx * hsic_yy + epsilon))
+    if torch.isnan(cka_value):
+        print("⚠️ Warning: CKA returned NaN")
+        print("HSIC XY:", hsic_xy.item())
+        print("HSIC XX:", hsic_xx.item())
+        print("HSIC YY:", hsic_yy.item())
 
     return cka_value

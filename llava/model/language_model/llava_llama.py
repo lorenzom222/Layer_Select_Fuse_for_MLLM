@@ -173,21 +173,26 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 hl_bsz = layer_hidden_state.shape[0]
                 for sample_idx in range(hl_bsz):
                     # Get text embeddings for this batch
-                    text_mask = ~image_token_mask[sample_idx]  # shape: [seq_len]
+                    image_mask = image_token_mask[sample_idx].bool()
+                    text_mask = ~image_mask
                     text_embeds = layer_hidden_state[sample_idx][text_mask]  # shape: [n_text_tokens, hidden_dim]
                     
-                    # Get image embeddings for this batch
-                    image_mask = image_token_mask[sample_idx]  # shape: [seq_len]
-                    image_embeds = layer_hidden_state[sample_idx][image_mask]  # shape: [n_image_patches, hidden_dim]
-                    
+                    # Extract embeddings
+                    text_embeds = layer_hidden_state[sample_idx][text_mask]    # [n_text_tokens, hidden_dim]
+                    image_embeds = layer_hidden_state[sample_idx][image_mask]  # [n_image_patches, hidden_dim]
+
                     # Only compute CKA if we have both text and image embeddings
                     if text_embeds.shape[0] > 0 and image_embeds.shape[0] > 0:
-                        try:
-                            cka_val = unbiased_cka(text_embeds, image_embeds)
-                            layer_ckas.append(cka_val.item())
-                        except Exception as e:
-                            print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
-                            layer_ckas.append(None)
+                        # try:        
+                        # print(f"Text embeds shape: {text_embeds.shape}")
+                        # print(f"Image embeds shape: {image_embeds.shape}")
+                        # print(f"Text embeds dtype: {text_embeds.dtype}")
+                        # print(f"Image embeds dtype: {image_embeds.dtype}")
+                        cka_val = unbiased_cka(text_embeds, image_embeds)
+                        layer_ckas.append(cka_val.item())
+                        # except Exception as e:
+                        #     print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
+                        #     layer_ckas.append(None)
                     else:
                         layer_ckas.append(None)
 
@@ -202,11 +207,30 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             
                         
                 cka_similarities[f'layer_{layer_idx}'] = layer_mean
-                if layer_mean is not None:
+                if layer_mean is not None and torch.distributed.get_rank() == 0:
                     wandb.log({
                         f"cka/layer_{layer_idx}": layer_mean,
-                            "step": self.state.global_step
                     })
+# # After collecting all layer CKAs, aggregate across ranks
+# if torch.distributed.is_initialized():
+#     # Gather CKA scores from all ranks
+#     gathered_ckas = [None] * torch.distributed.get_world_size()
+#     torch.distributed.all_gather_object(gathered_ckas, layer_ckas)
+    
+#     # Combine valid CKA scores (remove Nones)
+#     valid_ckas = [score for rank_ckas in gathered_ckas 
+#                  for score in rank_ckas if score is not None]
+    
+#     # Compute average CKA if we have valid scores
+#     if valid_ckas:
+#         avg_cka = sum(valid_ckas) / len(valid_ckas)
+        
+#         # Log only on rank 0
+#         if torch.distributed.get_rank() == 0:
+#             wandb.log({
+#                 f"cka/layer_{layer_idx}": avg_cka,
+#             })
+
 
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:
