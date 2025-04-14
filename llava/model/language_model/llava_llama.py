@@ -179,16 +179,17 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                     
                     # Extract embeddings
                     text_embeds = layer_hidden_state[sample_idx][text_mask]    # [n_text_tokens, hidden_dim]
-                    image_embeds = layer_hidden_state[sample_idx][image_mask]  # [n_image_patches, hidden_dim]
+                    image_input_embeds = inputs_embeds[sample_idx][image_mask]  # [n_image_patches, hidden_dim]
+                    # both hidden_state and input_embeds have the same shape. one is raw input, the other is processed
 
                     # Only compute CKA if we have both text and image embeddings
-                    if text_embeds.shape[0] > 0 and image_embeds.shape[0] > 0:
+                    if text_embeds.shape[0] > 0 and image_input_embeds.shape[0] > 0:
                         # try:        
                         # print(f"Text embeds shape: {text_embeds.shape}")
                         # print(f"Image embeds shape: {image_embeds.shape}")
                         # print(f"Text embeds dtype: {text_embeds.dtype}")
                         # print(f"Image embeds dtype: {image_embeds.dtype}")
-                        cka_val = unbiased_cka(text_embeds, image_embeds)
+                        cka_val = unbiased_cka(text_embeds, image_input_embeds)
                         layer_ckas.append(cka_val.item())
                         # except Exception as e:
                         #     print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
