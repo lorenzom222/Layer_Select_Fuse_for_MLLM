@@ -1,7 +1,14 @@
 # Data download files
 data_download.md
 data_download.sh
-
+llava/model/language_model/llama_buildup.md
+llava/model/language_model/llava_buildup.md
+llava/model/multimodal_encoder/Breakdown.md
+llava/model/multimodal_encoder/image/
+llava/model/multimodal_encoder/siglip_breakdown.md
+llava/model/multimodal_encoder/toy_example.ipynb
+project_plans.md
+tests/
 # VS Code settings
 .vscode/
 
