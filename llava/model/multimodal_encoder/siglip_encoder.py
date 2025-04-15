@@ -582,18 +582,21 @@ class SigLipVisionTower(nn.Module):
   
         selected_features = []
 
-
         # For siglip, we only tested 3-18-23 and the latter
-
         if self.layer_using_strategy == '3-18-23':
             select_layer = [3,20,25,25]    
         if self.layer_using_strategy == 'latter':
             select_layer = [15,16, 17, 18, 19, 20, 21, 22, 23, 24,25,26,25]
-
-
+        if self.layer_using_strategy == 'last':
+            # Only use the last layer output
+            select_layer = [-1]
 
         for layer_index in select_layer:
-            layer_features = image_forward_outs.hidden_states[layer_index]
+            if layer_index == -1:
+                # Use the last hidden state directly
+                layer_features = image_forward_outs.last_hidden_state
+            else:
+                layer_features = image_forward_outs.hidden_states[layer_index]
             if self.select_feature == 'patch':
                 layer_features = layer_features[:, 1:]
             elif self.select_feature == 'cls_patch':

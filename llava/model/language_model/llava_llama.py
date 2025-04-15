@@ -27,7 +27,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-from llava.mm_utils import unbiased_cka
+from llava.mm_utils import unbiased_cka, cosine_similarity
 
 import wandb
 class LlavaConfig(LlamaConfig):
@@ -165,22 +165,25 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         cka_similarities = None
         if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
             cka_similarities = {}
-            
+            cosine_similarities = {}
+
             for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [batch, seq_len, hidden_dim]
                 layer_ckas = []
-                
+                layer_cosines = []
+
                 # Loop over each sample in the batch
                 hl_bsz = layer_hidden_state.shape[0]
                 for sample_idx in range(hl_bsz):
                     # Get text embeddings for this batch
                     image_mask = image_token_mask[sample_idx].bool()
-                    text_mask = ~image_mask
-                    text_embeds = layer_hidden_state[sample_idx][text_mask]  # shape: [n_text_tokens, hidden_dim]
-                    
+                    text_mask = ~image_mask                    
                     # Extract embeddings
                     text_embeds = layer_hidden_state[sample_idx][text_mask]    # [n_text_tokens, hidden_dim]
                     image_input_embeds = inputs_embeds[sample_idx][image_mask]  # [n_image_patches, hidden_dim]
                     # both hidden_state and input_embeds have the same shape. one is raw input, the other is processed
+                    # But text embeds and image embeds have different shapes.
+                    # So we need to align them before computing CKA? 
+                    # Would it be better to align the image embeds to the text embeds?
 
                     # Only compute CKA if we have both text and image embeddings
                     if text_embeds.shape[0] > 0 and image_input_embeds.shape[0] > 0:
@@ -191,12 +194,14 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                         # print(f"Image embeds dtype: {image_embeds.dtype}")
                         cka_val = unbiased_cka(text_embeds, image_input_embeds)
                         layer_ckas.append(cka_val.item())
+                        cos_sim = cosine_similarity(text_embeds, image_input_embeds)
+                        layer_cosines.append(cos_sim)
                         # except Exception as e:
                         #     print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
                         #     layer_ckas.append(None)
                     else:
                         layer_ckas.append(None)
-
+                        layer_cosines.append(None)
                 # Aggregate layer CKA values per sample in batch via mean
                 # So this is: Per each layer, we have a list of CKA values for each sample in the batch.
                 # That means we compare each img_embed to text_embed for each sample in the batch --> Got CKA for that
@@ -205,13 +210,17 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                     layer_mean = sum(valid_layer_ckas) / len(valid_layer_ckas)
                 else:
                     layer_mean = None
-            
-                        
                 cka_similarities[f'layer_{layer_idx}'] = layer_mean
-                if layer_mean is not None and torch.distributed.get_rank() == 0:
-                    wandb.log({
-                        f"cka/layer_{layer_idx}": layer_mean,
-                    })
+
+                valid_cosines = [val for val in layer_cosines if val is not None]
+                cosine_mean = sum(valid_cosines) / len(valid_cosines) if valid_cosines else None
+                cosine_similarities[f'layer_{layer_idx}'] = cosine_mean     
+                
+                if torch.distributed.get_rank() == 0:
+                    if layer_mean is not None:
+                        wandb.log({f"cka/layer_{layer_idx}": layer_mean})
+                    if cosine_mean is not None:
+                        wandb.log({f"cosine/layer_{layer_idx}": cosine_mean})
 # # After collecting all layer CKAs, aggregate across ranks
 # if torch.distributed.is_initialized():
 #     # Gather CKA scores from all ranks

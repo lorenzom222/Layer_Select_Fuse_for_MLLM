@@ -50,9 +50,16 @@ class CLIPVisionTower(nn.Module):
             select_layer = [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,23]
         if self.layer_using_strategy == 'all':
             select_layer = [1,2,3,4,5,6,7,8,9,10,11,12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,23]
+        if self.layer_using_strategy == 'last':
+            # Only use the last layer output
+            select_layer = [-1]
 
         for layer_index in select_layer:
-            layer_features = image_forward_outs.hidden_states[layer_index]
+            if layer_index == -1:
+                # Use the last hidden state directly
+                layer_features = image_forward_outs.last_hidden_state
+            else:
+                layer_features = image_forward_outs.hidden_states[layer_index]
             if self.select_feature == 'patch':
                 layer_features = layer_features[:, 1:]
             elif self.select_feature == 'cls_patch':

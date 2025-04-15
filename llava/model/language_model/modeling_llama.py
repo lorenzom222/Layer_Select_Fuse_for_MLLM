@@ -959,6 +959,8 @@ class LlamaDecoderLayer(nn.Module):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
+        # For External Fusion, it always takes Path A because:
+        # 1. self.has_cross is False (set in __init__)
 
         # Process the layer. PAths: Cross-attention or not
         # Path A: Standard processing without cross-attention but with "I_D" (Direct Insertion) strategy
@@ -1416,6 +1418,8 @@ class LlamaModel(LlamaPreTrainedModel):
                     layer_indices = [length - 12,length - 11, length - 10, length - 9, length - 8, length - 7, length - 6, length - 5, length - 4, length - 3, length - 2, length - 1]
                 if self.layer_using_strategy == 'all':
                     layer_indices = [0,1,2,3,4,5,6,7,8,9,10,11,length - 12, length - 11, length - 10, length - 9, length - 8, length - 7, length - 6, length - 5, length - 4, length - 3, length - 2, length - 1]
+                if self.layer_using_strategy == 'last':
+                    layer_indices = [length - 1]
 
 
 

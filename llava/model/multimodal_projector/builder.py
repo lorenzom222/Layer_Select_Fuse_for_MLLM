@@ -97,6 +97,12 @@ def build_vision_projector(config, vision_tower, delay_load=False, **kwargs):
                 modules.append(nn.GELU())
                 modules.append(nn.Linear(config.hidden_size, config.hidden_size))
             return nn.Sequential(*modules)  
+        if config.layer_using_strategy == 'last':
+            modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
+            for _ in range(1, mlp_depth):
+                modules.append(nn.GELU())
+                modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+            return nn.Sequential(*modules)
         
     # elif config.layer_fusing_strategy =='E_M':
     #     # External module fusion strategy:

@@ -305,13 +305,15 @@ def align_embeddings_for_cka(features_x: torch.Tensor, features_y: torch.Tensor,
             )
         elif pooling == 'interpolate':
             # Resize to fixed length using linear interpolation (1D)
+            target_len = features_x.shape[0]
+
             def resize(tensor, N):
                 tensor = tensor.unsqueeze(0).transpose(1, 2)  # [1, D, L]
                 tensor = F.interpolate(tensor, size=N, mode='linear', align_corners=False)
                 return tensor.squeeze(0).transpose(0, 1)  # [N, D]
 
-            features_x = resize(features_x, projection_size)
-            features_y = resize(features_y, projection_size)
+            features_x = features_x
+            features_y = resize(features_y, target_len)
             # print(f"Interpolated to shape: {features_x.shape}")
         else:
             raise ValueError(f"Invalid pooling type: '{pooling}'. Choose 'mean', 'max', or 'none'.")
@@ -319,7 +321,14 @@ def align_embeddings_for_cka(features_x: torch.Tensor, features_y: torch.Tensor,
     return features_x, features_y
 
 
-# Function to compute the Centered Kernel Alignment (CKA) similarity (unbiased)
+def cosine_similarity(features_x, features_y):
+    text_mean = features_x.mean(dim=0)
+    image_mean = features_y.mean(dim=0)
+
+    cosine_sim = F.cosine_similarity(text_mean, image_mean, dim=0).item()
+
+    return cosine_sim
+
 def unbiased_cka(features_x, features_y, pooling: str = 'interpolate'):
     """
     Computes the unbiased Centered Kernel Alignment (CKA) similarity between two feature matrices.

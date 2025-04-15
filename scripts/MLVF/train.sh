@@ -2,8 +2,8 @@
 BASE_MODEL_NAME="test_cka"
 
 # Define common variables
-FUSING_STRATEGY="I_D" # Options: E_D, E_M, I_D, I_M
-USING_STRATEGY="3-18-23" # Options: 18, 3-18, 3-18-23, former, latter, all
+FUSING_STRATEGY="E_D" # Empty string for no fusion strategy
+USING_STRATEGY="last" # Empty string for no layer selection
 MODEL_NAME="siglip_14_665k" # Specific model name, {Vsiual Encoder}_{LLM size}_{data size}
 
 # Define paths
@@ -18,7 +18,6 @@ FINETUNE_IMAGE_FOLDER="./playground/data" # ./playground/Cambrian-10M
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Pretraining
-# export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1
 accelerate launch llava/train/train.py \
     --model_name_or_path ${MODEL_PATH} \
     --version plain \
@@ -33,7 +32,7 @@ accelerate launch llava/train/train.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME} \
+    --output_dir ./checkpoint/${BASE_MODEL_NAME}-normal-pretrain-${MODEL_NAME}-${TIMESTAMP} \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
@@ -52,7 +51,7 @@ accelerate launch llava/train/train.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
+    --wandb_name ${BASE_MODEL_NAME}-normal-pretrain-${MODEL_NAME}-${TIMESTAMP} \
     --compute_cka True
 #--max_steps 10 \
 # # Fine-tuning

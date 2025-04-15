@@ -49,6 +49,8 @@ class LlavaMetaModel:
                     self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(2)])
                 elif self.config.layer_using_strategy == '18':
                     self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(1)])
+                elif self.config.layer_using_strategy == 'last':
+                    self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(1)])
 
             self.mm_projector_f = build_vision_projector(config, vision_tower=self.vision_tower) # this is for ... not sure??? building the projector for the fusion
 
@@ -133,6 +135,8 @@ class LlavaMetaModel:
                 elif self.config.layer_using_strategy == '3-18':
                     self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(2)])
                 elif self.config.layer_using_strategy == '18':
+                    self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(1)])
+                elif self.config.layer_using_strategy == 'last':
                     self.mm_projectors = nn.ModuleList([build_vision_projector(self.config, vision_tower=self.vision_tower) for _ in range(1)])
             self.mm_projector_f = build_vision_projector(self.config, vision_tower=self.vision_tower)
             if 'unpad' in mm_patch_merge_type:
@@ -286,6 +290,8 @@ class LlavaMetaForCausalLM(ABC):
                 image_features_2 = torch.stack(image_features_2, dim=0)
                 image_features_2 = torch.sum(image_features_2, dim=0) / 12
                 image_features_f = self.get_model().mm_projector_f(torch.cat([image_features,image_features_2, selected_features[-1]], dim=-1))        
+            if self.config.layer_using_strategy == 'last':
+                image_features_f = self.get_model().mm_projector_f(selected_features[-1])
             return image_features_f
         
         else:
@@ -321,8 +327,8 @@ class LlavaMetaForCausalLM(ABC):
             if "E" in  self.config.layer_fusing_strategy:
                 image_features = self.encode_images(concat_images)
                 split_sizes = [image.shape[0] for image in images]
-            else:    
-                image_features_list = self.encode_images(concat_images)
+            else: # For Internal Fusion
+                image_features_list = self.encode_images(concat_images) # Get the embeddings for each 
                 split_sizes = [image.shape[0] for image in images]
                 image_features = image_features_list[-1]
 
