@@ -173,34 +173,34 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         cka_similarities = None
         if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
             print("\n=== Batch Size Debug Info ===")
+            print(f"Input batch size: {inputs_embeds.shape[0] if inputs_embeds is not None else 'None'}")
             print(f"Hidden states batch size: {outputs.hidden_states[0].shape[0]}")
             print(f"Image token mask batch size: {image_token_mask.shape[0]}")
             print(f"Attention mask batch size: {attention_mask.shape[0]}")
             print("==========================\n")
 
-            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [B, T, D]
+            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):
                 print(f"\n=== Layer {layer_idx} Debug Info ===")
                 print(f"Layer hidden state shape: {layer_hidden_state.shape}")
+                print(f"Image token mask shape: {image_token_mask.shape}")
+                print(f"Attention mask shape: {attention_mask.shape}")
                 
-                batch_size = layer_hidden_state.shape[0]
+                text_token_mask = (image_token_mask == 0) & (attention_mask == 1)
+                img_token_mask = (image_token_mask == 1) & (attention_mask == 1)
+                
+                text_token_indices = torch.where(text_token_mask)
+                image_token_indices = torch.where(img_token_mask)
+                
+                print(f"Text token indices shape: {text_token_indices[0].shape}")
+                print(f"Image token indices shape: {image_token_indices[0].shape}")
+                print("==========================\n")
 
-                for b in range(batch_size):
-                    print(f"\n-- Sample {b} --")
-                    cur_hidden = layer_hidden_state[b]              # [T, D]
-                    cur_image_mask = image_token_mask[b]            # [T]
-                    cur_attention_mask = attention_mask[b]          # [T]
+                text_embeds = layer_hidden_state[text_token_indices]
+                image_embeds = layer_hidden_state[image_token_indices]
+                print(f"text_embeds shape: {text_embeds.shape}")
+                print(f"image_embeds shape: {image_embeds.shape}")
 
-                    # Masks
-                    text_mask = (cur_image_mask == 0) & (cur_attention_mask == 1)
-                    img_mask = (cur_image_mask == 1) & (cur_attention_mask == 1)
 
-                    # Embeddings
-                    text_embeds = cur_hidden[text_mask]             # [num_text_tokens, D]
-                    image_embeds = cur_hidden[img_mask]             # [num_image_tokens, D]
-
-                    print(f"text_embeds.shape: {text_embeds.shape}")
-                    print(f"image_embeds.shape: {image_embeds.shape}")
-            
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
