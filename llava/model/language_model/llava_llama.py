@@ -177,6 +177,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             print(f"Hidden states batch size: {outputs.hidden_states[0].shape[0]}")
             print(f"Image token mask batch size: {image_token_mask.shape[0]}")
             print(f"Attention mask batch size: {attention_mask.shape[0]}")
+            print(f"Image features batch size: {images_features.shape[0]}")
             print("==========================\n")
 
             for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):
@@ -196,7 +197,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 print("==========================\n")
 
                 text_embeds = layer_hidden_state[text_token_indices]
-                image_embeds = layer_hidden_state[image_token_indices]
+                image_embeds = images_features[image_token_indices]
                 print(f"text_embeds shape: {text_embeds.shape}")
                 print(f"image_embeds shape: {image_embeds.shape}")
 
