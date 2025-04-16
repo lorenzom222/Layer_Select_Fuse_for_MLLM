@@ -32,7 +32,7 @@ accelerate launch llava/train/train.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./checkpoint/${BASE_MODEL_NAME}-normal-pretrain-${MODEL_NAME}-${TIMESTAMP} \
+    --output_dir ./checkpoint/${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
@@ -51,7 +51,7 @@ accelerate launch llava/train/train.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --wandb_name ${BASE_MODEL_NAME}-normal-pretrain-${MODEL_NAME}-${TIMESTAMP} \
+    --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
     --compute_cka True
 #--max_steps 10 \
 # # Fine-tuning

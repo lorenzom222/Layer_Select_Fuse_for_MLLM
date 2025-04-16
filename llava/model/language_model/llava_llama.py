@@ -170,6 +170,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [batch, seq_len, hidden_dim]
                 layer_ckas = []
                 layer_cosines = []
+                # So, we actually dont need to do this per sample. We dont even need to do this per batch.
+                # We need to do this per layer. 
 
                 # Loop over each sample in the batch
                 hl_bsz = layer_hidden_state.shape[0]

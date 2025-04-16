@@ -322,8 +322,16 @@ def align_embeddings_for_cka(features_x: torch.Tensor, features_y: torch.Tensor,
 
 
 def cosine_similarity(features_x, features_y):
-    text_mean = features_x.mean(dim=0)
-    image_mean = features_y.mean(dim=0)
+    # text_mean = features_x.mean(dim=0)
+    # image_mean = features_y.mean(dim=0)
+
+    # Change 
+    # All iimage token to all text tokens
+    # Make a matrix
+    # GEt min
+    # Get max 
+    # For each batch id, youll be computing the max sim and avg across
+    # 
 
     cosine_sim = F.cosine_similarity(text_mean, image_mean, dim=0).item()
 

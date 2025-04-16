@@ -1432,11 +1432,11 @@ class LlamaModel(LlamaPreTrainedModel):
                 if adjusted_layer_idx in layer_indices:
                     index = layer_indices.index(adjusted_layer_idx)
                     image_f = images_features[index]
-                if self.layer_using_strategy == 'I_D':    
+                if self.layer_using_strategy == 'I_D':  # This doesnt make sense. Why is layer_using_strategy I_D? I_D should map to layer_fusing_strategy = 'I_D'   
                     if past_key_value is None and decoder_layer.has_cross:
                         for batch_idx in range(hidden_states.shape[0]):
-                            cur_image_mask = image_token_mask[batch_idx]
-                            img_token_indices = torch.where(cur_image_mask == 1)[0]
+                            cur_image_mask = image_token_mask[batch_idx] # Note this is how you use iamge okten mask per batch
+                            img_token_indices = torch.where(cur_image_mask == 1)[0] # Note this is how you get the indices of the image tokens
                             if img_token_indices.shape[0]!=0:
                                 hidden_states[batch_idx, img_token_indices[0]:img_token_indices[0]+img_token_indices.shape[0]] = hidden_states[batch_idx, img_token_indices[0]:img_token_indices[0]+img_token_indices.shape[0]]+image_f[batch_idx]
                     layer_outputs = decoder_layer(

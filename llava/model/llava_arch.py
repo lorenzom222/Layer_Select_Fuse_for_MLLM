@@ -311,6 +311,24 @@ class LlavaMetaForCausalLM(ABC):
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None
     ):
+
+        # This is the input format for the model.
+        # {
+        # 'input_ids': [B, T],
+        # 'labels': [B, T],
+        # 'attention_mask': [B, T],
+        # 'images': [B, 3, H, W]
+        # }
+
+        # image.jpg
+        #   ↓ (loaded by)       ← 🧱 LazySupervisedDataset
+        # tensor([3, H, W])
+        #   ↓ (batched by)       ← 📦 DataCollatorForSupervisedDataset
+        # tensor([B, 3, H, W])
+        #   ↓ (passed into model.forward)
+        # prepare_inputs_labels_for_multimodal(images=...)
+
+
         # Grab the vision tower
         vision_tower = self.get_vision_tower()
         # No vision tower or no images or no input ids -> returns early with minimal processing.
@@ -320,7 +338,7 @@ class LlavaMetaForCausalLM(ABC):
             else:
                 return input_ids, position_ids, attention_mask, past_key_values, None, labels, None, None, None
         # If images is a list or a 5D tensor (batch of images)
-        if type(images) is list or images.ndim == 5:
+        if type(images) is list or images.ndim == 5: # this is for Multiple images per sample. Like a video or something i think
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             concat_images = torch.cat([image for image in images], dim=0)
@@ -338,7 +356,7 @@ class LlavaMetaForCausalLM(ABC):
             # Flat: Flattens all patches into a single sequence
             # Spatial: Preserves spatial information between patches
             # Unpad: Removes padding to restore original aspect ratio
-            if mm_patch_merge_type == 'flat':
+            if mm_patch_merge_type == 'flat': # Note: This is what we look at because default.
                 image_features = [x.flatten(0, 1) for x in image_features]
             elif mm_patch_merge_type.startswith('spatial'):
                 new_image_features = []
@@ -377,9 +395,9 @@ class LlavaMetaForCausalLM(ABC):
                 image_features = new_image_features
             else:
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
-        else:
+        else: # Note: This is for Single image per sample.
             if "E" in  self.config.layer_fusing_strategy:
-                image_features = self.encode_images(images)
+                image_features = self.encode_images(images) # Note: For Vanilla LLaVA, this is what we look at.
             else:
                 image_features_list = self.encode_images(images)
                 image_features = image_features_list[-1]
@@ -415,8 +433,18 @@ class LlavaMetaForCausalLM(ABC):
         image_token_mask = []
 
         cur_image_idx = 0
-        for batch_idx, cur_input_ids in enumerate(input_ids):
-            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
+        for batch_idx, cur_input_ids in enumerate(input_ids): # Note: This is where image features are inserted into the token sequence at each [IMAGE] token position
+
+            # NOTE: 
+            # input_ids -> 
+            #   -> Shape: (batch_size, max_sequence_length)
+            #   -> Each row is a sequence of token IDs from a single sample
+            # batch_idx -> Index of that sample in the batch
+            # cur_input_ids -> A single sample's token IDs
+            # cur_input_ids[batch_idx] -> The token id of the sample at position batch_idx
+  
+
+            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum() # Grab the number of 
             if num_images == 0:
                 # Case 1: No images in the batch -> just use the text features
                 cur_image_features = image_features[cur_image_idx]
@@ -429,20 +457,13 @@ class LlavaMetaForCausalLM(ABC):
                 continue
             
             # Case 2: Images in the batch -> process the text and image features separately
-            image_token_indices = [-1] + torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].tolist() + [cur_input_ids.shape[0]]
-            # This creates a list like [-1, 5, 12, 20] where:
-            # -1: Represents the position before the first token (the start of the sequence)
-            # 5: The position of the first image token
-            # 12: The position of the second image token
-            # 20: The position after the last token (the end of the sequence)
-            # [START] What is in [IMAGE] this image? [IMAGE] Please describe it. [END] 
-
-            
-            cur_input_ids_noim = []
-            cur_labels = labels[batch_idx]
-            cur_labels_noim = []
+            image_token_indices = [-1] + torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].tolist() + [cur_input_ids.shape[0]] # Get the indices of the image tokens
+            cur_input_ids_noim = [] # going to grab non-image tokens (text tokens or other tokens)
+            cur_labels = labels[batch_idx] # Get the target sequence for the current sample
+            cur_labels_noim = [] # going to grab non-image tokens from that label
 
             for i in range(len(image_token_indices) - 1):
+                # Iterate through the image token indices -> Extract text + label chunks between IMAGE_TOKEN_INDEX 
                 cur_input_ids_noim.append(cur_input_ids[image_token_indices[i]+1:image_token_indices[i+1]])
                 cur_labels_noim.append(cur_labels[image_token_indices[i]+1:image_token_indices[i+1]])
 
@@ -451,7 +472,7 @@ class LlavaMetaForCausalLM(ABC):
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             
-            # Combining Text and Image Embeddings
+            # Interleave Text and Image Embeddings
             # 1) Alternates between text embeddings and image features
             # 2) Creates labels for each segment
             # 3) Creates a mask to identify image tokens
@@ -468,70 +489,6 @@ class LlavaMetaForCausalLM(ABC):
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
                     cur_image_token_mask.append(torch.full((cur_image_features.shape[0],), True, device=cur_labels.device, dtype=cur_labels.dtype))
-                # Embeddings for [START] What is in
-                # Features for the first image
-                # Embeddings for this image?
-                # Features for the second image
-                # Embeddings for Please describe it. [END]
-                # Walk through the example:
-                    # 0: [START]
-                    # 1: What
-                    # 2: is
-                    # 3: in
-                    # 4: [IMAGE]  <-- First image token at position 4
-                    # 5: this
-                    # 6: image?
-                    # 7: [IMAGE]  <-- Second image token at position 6
-                    # 8: Please
-                    # 9: describe
-                    # 10: it.
-                    # 11: [END]
-                    # Resulting in: [-1, 4, 6, 11]
-
-# **Input sequence:**
-# ```
-# [START] What is in [IMAGE] this image? [IMAGE] Please describe it. [END]
-# ```
-
-# **With two images:**
-# - Image 1: A cat
-# - Image 2: A dog
-
-# **Processing steps:**
-
-# 1. **Find image token positions:**
-#    - `[-1, 5, 12, 20]` (assuming positions 5 and 12 are image tokens)
-
-# 2. **Split text segments:**
-#    - Segment 1: `[START] What is in`
-#    - Segment 2: `this image?`
-#    - Segment 3: `Please describe it. [END]`
-
-# 3. **Create text embeddings:**
-#    - Embeddings for Segment 1
-#    - Embeddings for Segment 2
-#    - Embeddings for Segment 3
-
-# 4. **Alternate text and images:**
-#    - Embeddings for Segment 1
-#    - Features for Image 1 (cat)
-#    - Embeddings for Segment 2
-#    - Features for Image 2 (dog)
-#    - Embeddings for Segment 3
-
-# 5. **Create labels:**
-#    - Labels for Segment 1
-#    - `IGNORE_INDEX` for Image 1
-#    - Labels for Segment 2
-#    - `IGNORE_INDEX` for Image 2
-#    - Labels for Segment 3
-
-# 6. **Create image token mask:**
-#    - `False` for Segment 1
-#    - `True` for Image 1
-#    - `False` for Segment 2
-#    - `True` for Image 2
-#    - `False` for Segment 3
 
             # Final Embedding Creation: 1) Moves embeddings to the correct device 2) Concatenates all embeddings, labels, and masks
             cur_new_input_embeds = [x.to(self.device) for x in cur_new_input_embeds]
@@ -548,17 +505,18 @@ class LlavaMetaForCausalLM(ABC):
             new_labels = [x[:tokenizer_model_max_length] for x in new_labels]
             image_token_mask = [x[:tokenizer_model_max_length] for x in image_token_mask]
 
-        # Padding Prep
+        # Pad everything to match the longest sample
         max_len = max(x.shape[0] for x in new_input_embeds)
         batch_size = len(new_input_embeds)
-        new_input_embeds_padded = []
-        new_labels_padded = torch.full((batch_size, max_len), IGNORE_INDEX, dtype=new_labels[0].dtype, device=new_labels[0].device)
-        attention_mask = torch.zeros((batch_size, max_len), dtype=attention_mask.dtype, device=attention_mask.device)
-        position_ids = torch.zeros((batch_size, max_len), dtype=position_ids.dtype, device=position_ids.device)
+        new_input_embeds_padded = [] # list of [max_len, hidden_dim] tensors per sample
+        new_labels_padded = torch.full((batch_size, max_len), IGNORE_INDEX, dtype=new_labels[0].dtype, device=new_labels[0].device) # Set all labels to IGNORE_INDEX
+        attention_mask = torch.zeros((batch_size, max_len), dtype=attention_mask.dtype, device=attention_mask.device) # Set all attention mask to 0
+        position_ids = torch.zeros((batch_size, max_len), dtype=position_ids.dtype, device=position_ids.device) # Set all position ids to 0
         new_image_token_mask_padded = []
 
-        # Padding Application
+        # Padding each sample individually
         for i, (cur_new_embed, cur_new_labels,cur_image_token_mask) in enumerate(zip(new_input_embeds, new_labels,image_token_mask)):
+            # Iterate through each sample in the batch (the new input embeds, new labels, and image token mask)
             cur_len = cur_new_embed.shape[0]
             if getattr(self.config, 'tokenizer_padding_side', 'right') == "left":
                 # Left Padding
@@ -600,6 +558,13 @@ class LlavaMetaForCausalLM(ABC):
         #   - Internal Fusion (I_M, I_D): Returns additional values for layer-specific features  
         
         # 1. Stack
+        # Now that all samples are [max_len], we can safely stack.
+        # For new_input_embeds: Contains list of text + image embeddings for each sample
+        #   -> From <list> of [max_len, hidden_dim] tensors per sample, eg. [tensor([max_len, hidden_dim]), tensor([max_len, hidden_dim]), ...]
+        #   -> to <tensor> of [batch_size, max_len, hidden_dim]
+        # For new_image_token_mask: Contains list of bools of image tokens for each sample
+        #   -> From <list> of [max_len] tensors per sample, eg. [tensor([max_len]), tensor([max_len]), ...] or [tensor([0, 1, 0, 1, 0])] for sequence of "[TEXT] [IMAGE1] [TEXT] [IMAGE2] [TEXT]"
+        #   -> to <tensor> of [batch_size, max_len]
         new_input_embeds = torch.stack(new_input_embeds_padded, dim=0)
         new_image_token_mask = torch.stack(new_image_token_mask_padded,dim=0)
         
@@ -617,6 +582,12 @@ class LlavaMetaForCausalLM(ABC):
             position_ids = None
 
         # 3. Return
+        # new_input_embeds: Now includes text + image embeddings [batch_size, max_seq_len, hidden_dim]
+        # new_labels              # [batch_size, max_seq_len]
+        # attention_mask          # [batch_size, max_seq_len]
+        # position_ids            # [batch_size, max_seq_len]
+        # new_image_token_mask    # [batch_size, max_seq_len]
+
         if "E" in  self.config.layer_fusing_strategy:
             return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, image_features,new_image_token_mask
 
