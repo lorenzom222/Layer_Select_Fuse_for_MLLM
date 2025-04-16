@@ -86,6 +86,11 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         image_features_list = None
         image_features_f = None
         if "E" in self.config.layer_fusing_strategy:
+            # - image_features_f is always the last layer's features [batch_size, num_patches, hidden_dim]
+            # - image_features_list contains all layers except the last (for Internal Fusion) List of [batch_size, num_patches, hidden_dim]
+            # - images_features is the final variable that gets used in the model, which is either:
+            #   - Just image_features_f for External Fusion
+            #   - image_features_list + [image_features_f] for Internal Fusion
             if inputs_embeds is None:
                 (
                     input_ids,
@@ -129,7 +134,10 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                     image_sizes
                 )
 
-
+            # NOTE:
+            # THIS MIGHT BE A LIST OF TENSORS
+            # For now, assume we are just using last layer from ViT
+            # If we wanna do interal ViT selection, we handle this as a list
             if images_features is None and image_features_list is not None:
                 images_features = image_features_list + [image_features_f]
 
@@ -164,86 +172,35 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     
         cka_similarities = None
         if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
-            cka_similarities = {}
-            cosine_similarities = {}
+            print("\n=== Batch Size Debug Info ===")
+            print(f"Hidden states batch size: {outputs.hidden_states[0].shape[0]}")
+            print(f"Image token mask batch size: {image_token_mask.shape[0]}")
+            print(f"Attention mask batch size: {attention_mask.shape[0]}")
+            print("==========================\n")
 
-            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [batch, seq_len, hidden_dim]
-                layer_ckas = []
-                layer_cosines = []
-                # So, we actually dont need to do this per sample. We dont even need to do this per batch.
-                # We need to do this per layer. 
-
-                # Loop over each sample in the batch
-                hl_bsz = layer_hidden_state.shape[0]
-                for sample_idx in range(hl_bsz):
-                    # Get text embeddings for this batch
-                    image_mask = image_token_mask[sample_idx].bool()
-                    text_mask = ~image_mask                    
-                    # Extract embeddings
-                    text_embeds = layer_hidden_state[sample_idx][text_mask]    # [n_text_tokens, hidden_dim]
-                    image_input_embeds = inputs_embeds[sample_idx][image_mask]  # [n_image_patches, hidden_dim]
-                    # both hidden_state and input_embeds have the same shape. one is raw input, the other is processed
-                    # But text embeds and image embeds have different shapes.
-                    # So we need to align them before computing CKA? 
-                    # Would it be better to align the image embeds to the text embeds?
-
-                    # Only compute CKA if we have both text and image embeddings
-                    if text_embeds.shape[0] > 0 and image_input_embeds.shape[0] > 0:
-                        # try:        
-                        # print(f"Text embeds shape: {text_embeds.shape}")
-                        # print(f"Image embeds shape: {image_embeds.shape}")
-                        # print(f"Text embeds dtype: {text_embeds.dtype}")
-                        # print(f"Image embeds dtype: {image_embeds.dtype}")
-                        cka_val = unbiased_cka(text_embeds, image_input_embeds)
-                        layer_ckas.append(cka_val.item())
-                        cos_sim = cosine_similarity(text_embeds, image_input_embeds)
-                        layer_cosines.append(cos_sim)
-                        # except Exception as e:
-                        #     print(f"Warning: CKA computation failed for sample {sample_idx} in layer {layer_idx}: {e}")
-                        #     layer_ckas.append(None)
-                    else:
-                        layer_ckas.append(None)
-                        layer_cosines.append(None)
-                # Aggregate layer CKA values per sample in batch via mean
-                # So this is: Per each layer, we have a list of CKA values for each sample in the batch.
-                # That means we compare each img_embed to text_embed for each sample in the batch --> Got CKA for that
-                valid_layer_ckas = [sample_ckas for sample_ckas in layer_ckas if sample_ckas is not None] # [bsz] -> Just ckas that were able to be computed
-                if valid_layer_ckas:
-                    layer_mean = sum(valid_layer_ckas) / len(valid_layer_ckas)
-                else:
-                    layer_mean = None
-                cka_similarities[f'layer_{layer_idx}'] = layer_mean
-
-                valid_cosines = [val for val in layer_cosines if val is not None]
-                cosine_mean = sum(valid_cosines) / len(valid_cosines) if valid_cosines else None
-                cosine_similarities[f'layer_{layer_idx}'] = cosine_mean     
+            for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):  # [B, T, D]
+                print(f"\n=== Layer {layer_idx} Debug Info ===")
+                print(f"Layer hidden state shape: {layer_hidden_state.shape}")
                 
-                if torch.distributed.get_rank() == 0:
-                    if layer_mean is not None:
-                        wandb.log({f"cka/layer_{layer_idx}": layer_mean})
-                    if cosine_mean is not None:
-                        wandb.log({f"cosine/layer_{layer_idx}": cosine_mean})
-# # After collecting all layer CKAs, aggregate across ranks
-# if torch.distributed.is_initialized():
-#     # Gather CKA scores from all ranks
-#     gathered_ckas = [None] * torch.distributed.get_world_size()
-#     torch.distributed.all_gather_object(gathered_ckas, layer_ckas)
-    
-#     # Combine valid CKA scores (remove Nones)
-#     valid_ckas = [score for rank_ckas in gathered_ckas 
-#                  for score in rank_ckas if score is not None]
-    
-#     # Compute average CKA if we have valid scores
-#     if valid_ckas:
-#         avg_cka = sum(valid_ckas) / len(valid_ckas)
-        
-#         # Log only on rank 0
-#         if torch.distributed.get_rank() == 0:
-#             wandb.log({
-#                 f"cka/layer_{layer_idx}": avg_cka,
-#             })
+                batch_size = layer_hidden_state.shape[0]
 
+                for b in range(batch_size):
+                    print(f"\n-- Sample {b} --")
+                    cur_hidden = layer_hidden_state[b]              # [T, D]
+                    cur_image_mask = image_token_mask[b]            # [T]
+                    cur_attention_mask = attention_mask[b]          # [T]
 
+                    # Masks
+                    text_mask = (cur_image_mask == 0) & (cur_attention_mask == 1)
+                    img_mask = (cur_image_mask == 1) & (cur_attention_mask == 1)
+
+                    # Embeddings
+                    text_embeds = cur_hidden[text_mask]             # [num_text_tokens, D]
+                    image_embeds = cur_hidden[img_mask]             # [num_image_tokens, D]
+
+                    print(f"text_embeds.shape: {text_embeds.shape}")
+                    print(f"image_embeds.shape: {image_embeds.shape}")
+            
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
