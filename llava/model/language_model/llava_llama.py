@@ -77,6 +77,24 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         compute_cka: bool = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
+        # Check if we're in vanilla LLM mode - if so, skip all image processing
+        vanilla_llm_mode = getattr(self.config, 'vanilla_llm_mode', False)
+        if vanilla_llm_mode:
+            # In vanilla LLM mode, just use the parent LlamaForCausalLM forward pass
+            return super(LlavaLlamaForCausalLM, self).forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                labels=labels,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict
+            )
+            
+        # If not in vanilla mode, continue with multimodal processing
         # if compute_cka:
         # Then compare image_features 
             

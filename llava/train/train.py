@@ -82,6 +82,25 @@ class ModelArguments:
     n_queries: int = field(default=None)
     layer_using_strategy: Optional[str] = field(default=None)
     layer_fusing_strategy: Optional[str] = field(default=None)
+    use_dummy_image_tokens: bool = field(
+        default=False,
+        metadata={"help": "Whether to use dummy image tokens instead of real image features"}
+    )
+    dummy_token_strategy: str = field(
+        default="gaussian",
+        metadata={"help": "Strategy for dummy tokens: gaussian, zeros, ones, random, constant, whitespace, or newline"}
+    )
+    dummy_token_value: float = field(
+        default=0.0,
+    )
+    dummy_token_trainable: bool = field(
+        default=True,
+        metadata={"help": "Whether dummy tokens should be trainable (have gradients)"}
+    )
+    vanilla_llm_mode: bool = field(
+        default=False,
+        metadata={"help": "Run in vanilla LLM mode - completely ignore images and image tokens"}
+    )
 
 @dataclass
 class DataArguments:
@@ -929,6 +948,18 @@ def train(attn_implementation=None):
         model.config.tune_mm_mlp_adapter = training_args.tune_mm_mlp_adapter = model_args.tune_mm_mlp_adapter
         model.config.layer_using_strategy = training_args.layer_using_strategy = model_args.layer_using_strategy
         model.config.layer_fusing_strategy = training_args.layer_fusing_strategy = model_args.layer_fusing_strategy
+        model.config.use_dummy_image_tokens = model_args.use_dummy_image_tokens
+        model.config.dummy_token_strategy = model_args.dummy_token_strategy
+        model.config.dummy_token_trainable = model_args.dummy_token_trainable
+        model.config.vanilla_llm_mode = model_args.vanilla_llm_mode
+        
+        if model_args.vanilla_llm_mode:
+            rank0_print("\n" + "="*50)
+            rank0_print("WARNING: Running in vanilla LLM mode!")
+            rank0_print("All image tokens will be treated as regular text tokens")
+            rank0_print("No image features or dummy tokens will be used")
+            rank0_print("="*50 + "\n")
+            
         if model_args.tune_mm_mlp_adapter:
             model.requires_grad_(False)
             if "I" in model.config.layer_fusing_strategy:
