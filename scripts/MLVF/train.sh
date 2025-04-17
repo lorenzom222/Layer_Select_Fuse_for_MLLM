@@ -52,7 +52,10 @@ accelerate launch llava/train/train.py \
     --lazy_preprocess True \
     --report_to wandb \
     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
-    --compute_cka True
+    --compute_cka True \
+    --use_dummy_image_tokens True \
+    --dummy_token_strategy "zeros"
+
 #--max_steps 10 \
 # # Fine-tuning
 # export TORCH_DISTRIBUTED_FIND_UNUSED_PARAMETERS=1

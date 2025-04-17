@@ -602,12 +602,8 @@ def compute_mmd_linear(X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
     Returns:
         Scalar tensor: the mean of per-sample MMDs
     """
-    # print(f"X: {X}")
-    # print(f"Y: {Y}")
-    if X.size(1) != Y.size(1):
-        raise ValueError("Feature dims differ.")
+    # if X.size(1) != Y.size(1):
+    #     raise ValueError("Feature dims differ.")
     mu_t = X.mean(dim=0)     # [D]
     mu_i = Y.mean(dim=0)    # [D]
-    # print(f"mu_t: {mu_t}")
-    # print(f"mu_i: {mu_i}")
     return (mu_t - mu_i).pow(2).mean()  # scalar

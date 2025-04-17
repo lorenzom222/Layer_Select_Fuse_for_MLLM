@@ -44,3 +44,35 @@ def check_and_reconstruct_identical_tokens(embeddings, tokenizer=None, model=Non
         print(f"Decoded text: {decoded_text}")
         
     return are_identical, closest_token_ids, decoded_text 
+
+# def configure_dummy_tokens(model, use_dummy=True, strategy='gaussian', value=0.0):
+#     """
+#     Helper function to configure dummy image token options for LLaVA models.
+    
+#     Args:
+#         model: The LLaVA model instance
+#         use_dummy: Whether to use dummy tokens (True) or real image features (False)
+#         strategy: The dummy token strategy to use:
+#             - 'gaussian': Gaussian noise with same mean/std as original features
+#             - 'zeros': All zeros
+#             - 'ones': All ones
+#             - 'uniform': Uniform random values between 0 and 1
+#             - 'constant': Constant value (specified by value param)
+#         value: Value to use for 'constant' strategy
+    
+#     Returns:
+#         The model with updated configuration
+#     """
+#     # Set configuration options
+#     model.config.use_dummy_image_tokens = use_dummy
+#     model.config.dummy_token_strategy = strategy
+#     model.config.dummy_token_value = value
+    
+#     # Print configuration for verification
+#     print(f"Dummy image tokens: {'Enabled' if use_dummy else 'Disabled'}")
+#     if use_dummy:
+#         print(f"Strategy: {strategy}")
+#         if strategy == 'constant':
+#             print(f"Constant value: {value}")
+    
+#     return model

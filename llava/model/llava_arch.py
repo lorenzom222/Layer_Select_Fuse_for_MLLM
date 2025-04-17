@@ -120,6 +120,9 @@ class LlavaMetaModel:
         self.config.mm_vision_select_layer = mm_vision_select_layer
         self.config.mm_vision_select_feature = mm_vision_select_feature
         self.config.mm_patch_merge_type = mm_patch_merge_type
+        self.config.use_dummy_image_tokens = getattr(model_args, 'use_dummy_image_tokens', False)
+        self.config.dummy_token_strategy = getattr(model_args, 'dummy_token_strategy', 'gaussian')
+        self.config.dummy_token_value = getattr(model_args, 'dummy_token_value', 0.0)
 
         # Projector initialization
         if getattr(self, 'mm_projectors', None) is None:
@@ -401,6 +404,14 @@ class LlavaMetaForCausalLM(ABC):
             else:
                 image_features_list = self.encode_images(images)
                 image_features = image_features_list[-1]
+
+        # Store original image features for later use
+        original_image_features = image_features
+        if getattr(self.config, 'use_dummy_image_tokens', False):
+            # Get dummy token strategy from config
+            dummy_strategy = getattr(self.config, 'dummy_token_strategy', 'gaussian')
+            image_features = self.create_dummy_image_tokens(image_features, strategy=dummy_strategy)
+
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
             raise NotImplementedError
@@ -589,13 +600,86 @@ class LlavaMetaForCausalLM(ABC):
         # new_image_token_mask    # [batch_size, max_seq_len]
 
         if "E" in  self.config.layer_fusing_strategy:
-            return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, image_features,new_image_token_mask
+            return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, original_image_features, new_image_token_mask
 
         else:
-            return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, image_features_list[:-1], image_features_list[-1],new_image_token_mask
+            return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, image_features_list[:-1], image_features_list[-1], new_image_token_mask
 
+    def create_dummy_image_tokens(self, image_features, strategy='gaussian'):
+        """
+        Creates dummy image tokens using different strategies.
+        
+        Args:
+            image_features: Original image features (single tensor or list of tensors)
+            strategy: Strategy to use for dummy tokens:
+                - 'gaussian': Gaussian noise with same mean/std as original features
+                - 'zeros': All zeros
+                - 'ones': All ones
+                - 'uniform': Uniform random values
+                - 'constant': Constant value (specified by dummy_token_value)
+            
+        Returns:
+            Dummy tokens with same shape as input features
+        """
+        dummy_value = getattr(self.config, 'dummy_token_value', 0.0) 
+        
+        if isinstance(image_features, list):
+            dummy_features = []
+            for feat in image_features:
+                dummy_feat = self._apply_dummy_strategy(feat, strategy, dummy_value)
+                dummy_features.append(dummy_feat)
+            return dummy_features
+        else:
+            return self._apply_dummy_strategy(image_features, strategy, dummy_value)
+    
+    def _apply_dummy_strategy(self, features, strategy, dummy_value):
+        """Helper method to apply dummy token strategy to a single feature tensor"""
+        if strategy == 'gaussian':
+            # Calculate mean and std of the real features
+            mean = features.mean().item()
+            std = max(features.std().item(), 1e-6)  # Avoid very small std
+            # Create Gaussian noise with same distribution
+            return torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
+        
+        elif strategy == 'zeros':
+            return torch.zeros_like(features, device=features.device, dtype=features.dtype)
+        
+        elif strategy == 'ones':
+            return torch.ones_like(features, device=features.device, dtype=features.dtype)
+        
+        elif strategy == 'random':
+            # Uniform random values between 0 and 1
+            return torch.rand_like(features, device=features.device, dtype=features.dtype)
+        
+        elif strategy == 'constant':
+            # Constant value specified by dummy_token_value
+            return torch.full_like(features, dummy_value, device=features.device, dtype=features.dtype)
+        
+        elif strategy == 'whitespace':
+            # Get the embedding for the whitespace token
+            whitespace_id = self.tokenizer.encode(' ', add_special_tokens=False)[0]
+            whitespace_embedding = self.get_model().embed_tokens.weight[whitespace_id]
+            # Expand to match feature dimensions
+            return whitespace_embedding.expand_as(features).to(features.device)
+        
+        elif strategy == 'newline':
+            # Get the embedding for the newline token
+            newline_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
+            newline_embedding = self.get_model().embed_tokens.weight[newline_id]
+            # Expand to match feature dimensions
+            return newline_embedding.expand_as(features).to(features.device)
+        
+        else:
+            print(f"Warning: Unknown dummy token strategy '{strategy}'. Falling back to 'gaussian'.")
+            mean = features.mean().item()
+            std = max(features.std().item(), 1e-6)
+            return torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
 
     def initialize_vision_tokenizer(self, model_args, tokenizer):
+        """
+        MultiModal Tokenizer Initialization, not just vision or image tokens
+        Build on top of LlamaTokenizer which is just probably a pretrained one (check llava/train/train.py)
+        """
         if model_args.mm_use_im_patch_token:
             tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
             self.resize_token_embeddings(len(tokenizer))
@@ -639,3 +723,4 @@ class LlavaMetaForCausalLM(ABC):
                     p.requires_grad = False
                 for p in self.get_output_embeddings().parameters():
                     p.requires_grad = False
+        self.tokenizer = tokenizer
