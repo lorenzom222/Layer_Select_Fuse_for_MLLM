@@ -18,7 +18,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 import torch
 import torch.nn as nn
 
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
                          
 from .modeling_llama import LlamaModel, LlamaForCausalLM
 from .configuration_llama import LlamaConfig
@@ -27,9 +27,11 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-from llava.mm_utils import unbiased_cka, cosine_similarity
+from llava.mm_utils import compute_cka_unbiased, compute_mmd_linear, compute_cosine_similarity
 
 import wandb
+from llava.utils.token_utils import check_and_reconstruct_identical_tokens
+
 class LlavaConfig(LlamaConfig):
     model_type = "llava_llama"
 
@@ -172,36 +174,124 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     
         cka_similarities = None
         if compute_cka and outputs.hidden_states is not None and image_token_mask is not None:
-            print("\n=== Batch Size Debug Info ===")
-            print(f"Input batch size: {inputs_embeds.shape[0] if inputs_embeds is not None else 'None'}")
-            print(f"Hidden states batch size: {outputs.hidden_states[0].shape[0]}")
-            print(f"Image token mask batch size: {image_token_mask.shape[0]}")
-            print(f"Attention mask batch size: {attention_mask.shape[0]}")
-            print(f"Image features batch size: {images_features.shape[0]}")
-            print("==========================\n")
+            # print("\n=== Batch Size Debug Info ===")
+            # print(f"Input batch size: {inputs_embeds.shape[0] if inputs_embeds is not None else 'None'}")
+            # print(f"Hidden states batch size: {outputs.hidden_states[0].shape}")
+            # print(f"Image token mask batch size: {image_token_mask.shape}")
+            # print(f"Attention mask batch size: {attention_mask.shape}")
+            # print(f"Image features batch size: {images_features.shape}")
+            # print("==========================\n")
+            mmd_vals = []
+            cos_sim = []
 
             for layer_idx, layer_hidden_state in enumerate(outputs.hidden_states):
-                print(f"\n=== Layer {layer_idx} Debug Info ===")
-                print(f"Layer hidden state shape: {layer_hidden_state.shape}")
-                print(f"Image token mask shape: {image_token_mask.shape}")
-                print(f"Attention mask shape: {attention_mask.shape}")
-                
-                text_token_mask = (image_token_mask == 0) & (attention_mask == 1)
-                img_token_mask = (image_token_mask == 1) & (attention_mask == 1)
-                
-                text_token_indices = torch.where(text_token_mask)
-                image_token_indices = torch.where(img_token_mask)
-                
-                print(f"Text token indices shape: {text_token_indices[0].shape}")
-                print(f"Image token indices shape: {image_token_indices[0].shape}")
-                print("==========================\n")
+                # print(f"\n=== Layer {layer_idx} Debug Info ===")
+                # print(f"Layer hidden state shape: {layer_hidden_state.shape}")
+                # print(f"Image token mask shape: {image_token_mask.shape}")
+                # print(f"Attention mask shape: {attention_mask.shape}")
 
-                text_embeds = layer_hidden_state[text_token_indices]
-                image_embeds = images_features[image_token_indices]
-                print(f"text_embeds shape: {text_embeds.shape}")
-                print(f"image_embeds shape: {image_embeds.shape}")
+                # ############################################################
+                
+                # text_token_mask = (image_token_mask == 0) & (attention_mask == 1)
+                # print(f"Text token mask: {text_token_mask}")
+                # print(f"Text token mask shape: {text_token_mask.shape}")
+                # text_token_indices = torch.where(text_token_mask)
+                
+                # print(f"Text token indices shape: {text_token_indices}")
 
+                # text_embeds = layer_hidden_state[text_token_indices]
+                # image_embeds = images_features
+                # print(f"text_embeds shape: {text_embeds.shape}")
+                # print(f"image_embeds shape: {image_embeds.shape}")
+                # ############################################################
 
+                image_embeds_flat = []
+                text_embeds_flat = []
+                text_embeds_plain = []
+                image_embeds_plain = images_features
+                batch_size = layer_hidden_state.shape[0]
+                
+
+                
+                for sample_idx in range(batch_size):
+                    # print(f"\n-- Sample {sample_idx} --")
+                    image_embeds = images_features[sample_idx] # Just pluck straight from the features
+                    image_flat = image_embeds.reshape(-1)      # [N_img * D]
+                    image_embeds_flat.append(image_flat)
+                    cur_hidden_sample  = layer_hidden_state[sample_idx]   # [T, D]
+                    cur_image_mask = image_token_mask[sample_idx]     # [T]
+                    cur_attention_mask= attention_mask[sample_idx]       # [T]
+
+                    # Masks
+                    text_token_mask = (cur_image_mask == 0)# & (cur_attention_mask == 1)
+                    text_token_indices = torch.where(text_token_mask)
+                    text_embeds = cur_hidden_sample[text_token_indices]
+                    text_embeds_plain.append(text_embeds)
+                    text_flat = text_embeds.reshape(-1)
+                    text_embeds_flat.append(text_flat)
+
+                    # if torch.allclose(text_embeds[0], text_embeds[1:], rtol=1e-5, atol=1e-5):
+                    #     print("Identical text tokens found in sample %d" % sample_idx)
+                    #     continue
+                    
+                    # # Decode text tokens for debugging/analysis
+                    # if text_token_indices[0].numel() > 0 and torch.allclose(text_embeds[0], text_embeds[1:], rtol=1e-5, atol=1e-5):  # Check if we have any text tokens
+                    #     print("Identical text tokens found in sample %d" % sample_idx)
+                    #     # Load tokenizer for decoding
+                    #     tokenizer = AutoTokenizer.from_pretrained(
+                    #         self.config._name_or_path,  # Use the model's path
+                    #         use_fast=False,
+                    #         padding_side="right"
+                    #     )
+                    #     # Get the text embeddings from input_embeds
+                    #     text_embeds = inputs_embeds[sample_idx][text_token_indices]
+                    #     # Find closest token embeddings in vocabulary
+                    #     token_embeddings = self.get_model().embed_tokens.weight
+                    #     distances = torch.cdist(text_embeds, token_embeddings)
+                    #     closest_token_ids = torch.argmin(distances, dim=1)
+                    #     decoded_text = tokenizer.decode(closest_token_ids)
+                    #     print(f"\nSample {sample_idx} text tokens: {closest_token_ids.tolist()}")
+                    #     print(f"Sample {sample_idx} decoded text: {decoded_text}")
+                
+                    # print(f"Text embeds shape: {text_embeds.shape}")
+                    # print(f"Image embeds shape: {image_embeds.shape}")
+                    # print(f"Text flat shape: {text_flat.shape}")
+                    # print(f"Image flat shape: {image_flat.shape}")
+                    # print("==========================\n")
+                    mmd_vals.append(compute_mmd_linear(text_embeds, image_embeds))
+                    cos_sim.append(compute_cosine_similarity(text_embeds, image_embeds))
+
+                image_embeds_flat = torch.stack(image_embeds_flat, dim=0)
+                text_embeds_flat = torch.stack(text_embeds_flat, dim=0)
+                text_embeds_plain = torch.stack(text_embeds_plain, dim=0)
+                # print(f"Image embeds flat shape: {image_embeds_flat.shape}")
+                # print(f"Text embeds flat shape: {text_embeds_flat.shape}")
+                # print(f"Image embeds plain shape: {image_embeds_plain.shape}")
+                # print(f"Text embeds plain shape: {text_embeds_plain.shape}")
+
+                # print("==========================\n")
+                # if torch.allclose(text_embeds_flat[0], text_embeds_flat[1:], rtol=1e-5, atol=1e-5):
+                #     print("Identical text tokens found in text_embeds_flat")
+                # cka_similarities = compute_cka_unbiased(
+                #     text_embeds_flat, 
+                #     image_embeds_flat,
+                #     unbiased=True,
+                #     model=self.get_model(),
+                # )
+                # print(f"CKA similarities: {cka_similarities}")
+                # print("==========================\n")
+
+                mmd_similarities = torch.tensor(mmd_vals).mean().item()
+                cos_sim_similarities = torch.tensor(cos_sim).mean().item()
+                # print(f"MMD similarities: {mmd_similarities}")
+                # print("==========================\n")
+                if torch.distributed.get_rank() == 0:
+                    # if cka_similarities is not None:
+                    #     wandb.log({f"cka/layer_{layer_idx}": cka_similarities})
+                    if mmd_similarities is not None:
+                        wandb.log({f"mmd/layer_{layer_idx}": mmd_similarities})
+                    if cos_sim_similarities is not None:
+                        wandb.log({f"cos_sim/layer_{layer_idx}": cos_sim_similarities})
         hidden_states = outputs[0]
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
