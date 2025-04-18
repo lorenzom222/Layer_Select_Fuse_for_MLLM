@@ -1432,7 +1432,7 @@ class LlamaModel(LlamaPreTrainedModel):
                 if adjusted_layer_idx in layer_indices:
                     index = layer_indices.index(adjusted_layer_idx)
                     image_f = images_features[index]
-                if self.layer_using_strategy == 'I_D':  # This doesnt make sense. Why is layer_using_strategy I_D? I_D should map to layer_fusing_strategy = 'I_D'   
+                if self.layer_fusing_strategy == 'I_D':  # This doesnt make sense. Why is layer_using_strategy I_D? I_D should map to layer_fusing_strategy = 'I_D'   
                     if past_key_value is None and decoder_layer.has_cross:
                         for batch_idx in range(hidden_states.shape[0]):
                             cur_image_mask = image_token_mask[batch_idx] # Note this is how you use iamge okten mask per batch
@@ -1448,7 +1448,7 @@ class LlamaModel(LlamaPreTrainedModel):
                         use_cache=use_cache,
                     )    
 
-                elif self.layer_using_strategy == 'I_M':  
+                elif self.layer_fusing_strategy == 'I_M':  
                     layer_outputs = decoder_layer(
                             hidden_states,
                             image_token_mask = image_token_mask,

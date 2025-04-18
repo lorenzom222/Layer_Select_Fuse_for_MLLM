@@ -78,21 +78,18 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
         # Check if we're in vanilla LLM mode - if so, skip all image processing
-        vanilla_llm_mode = getattr(self.config, 'vanilla_llm_mode', False)
-        if vanilla_llm_mode:
-            # In vanilla LLM mode, just use the parent LlamaForCausalLM forward pass
-            return super(LlavaLlamaForCausalLM, self).forward(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                inputs_embeds=inputs_embeds,
-                labels=labels,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict
-            )
+        # vanilla_llm_mode = getattr(self.config, 'vanilla_llm_mode', False)
+        # if vanilla_llm_mode:
+        #     # In vanilla LLM mode, just set all image stuff to None
+        #     image_features_list = None
+        #     image_features_f = None
+        #     if "E" in self.config.layer_fusing_strategy:
+        #         image_features_f = images_features[-1]
+        #     else:
+        #         image_features_list = images_features
+
+                
+
             
         # If not in vanilla mode, continue with multimodal processing
         # if compute_cka:
