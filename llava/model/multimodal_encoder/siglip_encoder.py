@@ -555,9 +555,9 @@ class SigLipVisionTower(nn.Module):
     def __init__(self, vision_tower, args, delay_load=False):
         super().__init__()
         self.is_loaded = False
-        self.layer_using_strategy = args.layer_using_strategy
         self.config = SigLipVisionConfig()
         self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
+        self.vit_feature_select_layers = getattr(args, 'vit_feature_select_layers', [-1])
         self.vision_tower_name = vision_tower
 
         self.image_processor = SigLipImageProcessor()
@@ -582,26 +582,41 @@ class SigLipVisionTower(nn.Module):
   
         selected_features = []
 
-        # For siglip, we only tested 3-18-23 and the latter
-        if self.layer_using_strategy == '3-18-23':
-            select_layer = [3,20,25,25]    
-        if self.layer_using_strategy == 'latter':
-            select_layer = [15,16, 17, 18, 19, 20, 21, 22, 23, 24,25,26,25]
-        if self.layer_using_strategy == 'last':
-            # Only use the last layer output
+        select_layer = self.vit_feature_select_layers
+        if select_layer is None or not isinstance(select_layer, list):
+            print(f"Warning: vit_feature_select_layers is invalid ({select_layer}), defaulting to [-1].")
+            select_layer = [-1]
+        if not select_layer:
+            print("Warning: vit_feature_select_layers is empty, defaulting to [-1].")
             select_layer = [-1]
 
         for layer_index in select_layer:
+            if not isinstance(layer_index, int):
+                print(f"Warning: Skipping invalid layer index {layer_index} in vit_feature_select_layers.")
+                continue
+
             if layer_index == -1:
-                # Use the last hidden state directly
                 layer_features = image_forward_outs.last_hidden_state
-            else:
+            elif layer_index >= 0 and hasattr(image_forward_outs, 'hidden_states') and image_forward_outs.hidden_states is not None and layer_index < len(image_forward_outs.hidden_states):
                 layer_features = image_forward_outs.hidden_states[layer_index]
+            else:
+                print(f"Warning: Cannot access hidden state for layer index {layer_index}. Skipping.")
+                continue
+
             if self.select_feature == 'patch':
                 layer_features = layer_features[:, 1:]
             elif self.select_feature == 'cls_patch':
                 layer_features = layer_features
             else:
+                raise ValueError(f'Unexpected select feature: {self.select_feature}')
+            selected_features.append(layer_features)
+
+        if not selected_features:
+            print("Warning: No valid features selected based on vit_feature_select_layers, defaulting to last_hidden_state.")
+            layer_features = image_forward_outs.last_hidden_state
+            if self.select_feature == 'patch':
+                layer_features = layer_features[:, 1:]
+            elif self.select_feature != 'cls_patch':
                 raise ValueError(f'Unexpected select feature: {self.select_feature}')
             selected_features.append(layer_features)
 

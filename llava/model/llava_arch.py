@@ -58,6 +58,202 @@ class LlavaMetaModel:
                 self.image_newline = nn.Parameter(
                     torch.empty(config.hidden_size, dtype=self.dtype)
                 )
+        
+        # Initialize dummy token registry if configured
+        if getattr(config, 'use_dummy_image_tokens', False):
+            self.initialize_dummy_tokens()
+
+    def initialize_dummy_tokens(self):
+        """Initialize persistent dummy tokens if configured to use them"""
+        # Create dummy token registry to store persistent tokens
+        self.dummy_token_registry = {}
+        # We'll populate this when first needed, keyed by shape
+
+    def get_persistent_dummy_tokens(self, image_features, strategy='gaussian'):
+        """
+        Returns persistent dummy tokens with the same shape as input features.
+        Creates them once and reuses them for subsequent calls.
+        
+        Args:
+            image_features: Original image features to match shape (single tensor or list)
+            strategy: Strategy used for initial creation
+            
+        Returns:
+            Persistent dummy tokens with same shape as input features
+        """
+        # Initialize dummy token registry if not already done
+        if not hasattr(self, 'dummy_token_registry'):
+            self.dummy_token_registry = {}
+        
+        device = image_features[0].device if isinstance(image_features, list) else image_features.device
+        
+        if isinstance(image_features, list):
+            dummy_features = []
+            for idx, feat in enumerate(image_features):
+                # Create a unique key for each feature in the list
+                key = f"list_{idx}_{tuple(feat.shape)}"
+                if key not in self.dummy_token_registry:
+                    # print(f"Creating new dummy token for shape {feat.shape} with key {key}")
+                    # Create and store for first use
+                    dummy_feat = self._apply_dummy_strategy(feat, strategy, getattr(self.config, 'dummy_token_value', 0.0))
+                    # Convert to parameter if trainable
+                    if getattr(self.config, 'dummy_token_trainable', True):
+                        # We need to properly register this as a parameter
+                        param_name = f"dummy_token_{key}"
+                        self.register_parameter(param_name, nn.Parameter(dummy_feat))
+                        self.dummy_token_registry[key] = param_name
+                    else:
+                        # For non-trainable, just store the tensor
+                        self.dummy_token_registry[key] = dummy_feat
+                # else:
+                #     print(f"Reusing existing dummy token for shape {feat.shape} with key {key}")
+                
+                # Get the parameter or tensor
+                if getattr(self.config, 'dummy_token_trainable', True):
+                    param_name = self.dummy_token_registry[key]
+                    dummy_feat = getattr(self, param_name)
+                else:
+                    dummy_feat = self.dummy_token_registry[key].to(device)
+                
+                dummy_features.append(dummy_feat)
+            return dummy_features
+        else:
+            # Single tensor case
+            key = f"single_{tuple(image_features.shape)}"
+            if key not in self.dummy_token_registry:
+                # print(f"Creating new dummy token for shape {image_features.shape} with key {key}")
+                # Create and store for first use
+                dummy_feat = self._apply_dummy_strategy(image_features, strategy, getattr(self.config, 'dummy_token_value', 0.0))
+                # Convert to parameter if trainable
+                if getattr(self.config, 'dummy_token_trainable', True):
+                    # We need to properly register this as a parameter
+                    param_name = f"dummy_token_{key}"
+                    self.register_parameter(param_name, nn.Parameter(dummy_feat))
+                    self.dummy_token_registry[key] = param_name
+                else:
+                    # For non-trainable, just store the tensor
+                    self.dummy_token_registry[key] = dummy_feat
+            # else:
+                # print(f"Reusing existing dummy token for shape {image_features.shape} with key {key}")
+            
+            # Get the parameter or tensor
+            if getattr(self.config, 'dummy_token_trainable', True):
+                param_name = self.dummy_token_registry[key]
+                dummy_feat = getattr(self, param_name)
+            else:
+                dummy_feat = self.dummy_token_registry[key].to(device)
+            
+            return dummy_feat
+
+    def _apply_dummy_strategy(self, features, strategy, dummy_value):
+        """Helper method to apply dummy token strategy to a single feature tensor"""
+        # Check if dummy tokens should be trainable based on config
+        trainable = getattr(self.config, 'dummy_token_trainable', True)
+        requires_grad = features.requires_grad
+        
+        if strategy == 'gaussian':
+            # Calculate mean and std of the real features
+            mean = features.mean().item()
+            std = max(features.std().item(), 1e-6)  # Avoid very small std
+            # Create Gaussian noise with same distribution
+            dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
+            # Handle trainability based on config
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'zeros':
+            dummy = torch.zeros_like(features, device=features.device, dtype=features.dtype)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'ones':
+            dummy = torch.ones_like(features, device=features.device, dtype=features.dtype)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'random':
+            # Uniform random values between 0 and 1
+            dummy = torch.rand_like(features, device=features.device, dtype=features.dtype)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'constant':
+            # Constant value specified by dummy_token_value
+            dummy = torch.full_like(features, dummy_value, device=features.device, dtype=features.dtype)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'whitespace':
+            # Get the embedding for the whitespace token
+            if not hasattr(self, 'tokenizer'):
+                print("Warning: Tokenizer not available for whitespace strategy. Falling back to gaussian.")
+                mean = features.mean().item()
+                std = max(features.std().item(), 1e-6)
+                dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
+                if requires_grad:
+                    dummy.requires_grad_(True)
+                if not trainable:
+                    dummy = dummy.detach()
+                return dummy
+            
+            whitespace_id = self.tokenizer.encode(' ', add_special_tokens=False)[0]
+            whitespace_embedding = self.get_model().embed_tokens.weight[whitespace_id].clone()
+            # Expand to match feature dimensions
+            dummy = whitespace_embedding.expand_as(features).to(features.device)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        elif strategy == 'newline':
+            # Get the embedding for the newline token
+            if not hasattr(self, 'tokenizer'):
+                print("Warning: Tokenizer not available for newline strategy. Falling back to gaussian.")
+                mean = features.mean().item()
+                std = max(features.std().item(), 1e-6)
+                dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
+                if requires_grad:
+                    dummy.requires_grad_(True)
+                if not trainable:
+                    dummy = dummy.detach()
+                return dummy
+                
+            newline_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
+            newline_embedding = self.get_model().embed_tokens.weight[newline_id].clone()
+            # Expand to match feature dimensions
+            dummy = newline_embedding.expand_as(features).to(features.device)
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
+        
+        else:
+            print(f"Warning: Unknown dummy token strategy '{strategy}'. Falling back to 'gaussian'.")
+            mean = features.mean().item()
+            std = max(features.std().item(), 1e-6)
+            dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
+            if requires_grad:
+                dummy.requires_grad_(True)
+            if not trainable:
+                dummy = dummy.detach()
+            return dummy
 
     def get_vision_tower(self):
         vision_tower = getattr(self, 'vision_tower', None)
@@ -114,6 +310,7 @@ class LlavaMetaModel:
         self.config.use_mm_proj = True
         self.config.mm_projector_type = getattr(model_args, 'mm_projector_type', 'linear')
         self.config.n_queries = getattr(model_args, 'n_queries', None)
+        self.config.vit_feature_select_layers = getattr(model_args, 'vit_feature_select_layers', [-1])
         self.config.layer_using_strategy = getattr(model_args, 'layer_using_strategy', None)
         self.config.layer_fusing_strategy = getattr(model_args, 'layer_fusing_strategy', None)
         self.config.mm_hidden_size = vision_tower.hidden_size
@@ -312,12 +509,10 @@ class LlavaMetaForCausalLM(ABC):
 
             return image_features
 
-    # Input Preparation
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None
     ):
-
         # This is the input format for the model.
         # {
         # 'input_ids': [B, T],
@@ -420,7 +615,8 @@ class LlavaMetaForCausalLM(ABC):
         if getattr(self.config, 'use_dummy_image_tokens', False):
             # Get dummy token strategy from config
             dummy_strategy = getattr(self.config, 'dummy_token_strategy', 'gaussian')
-            image_features = self.create_dummy_image_tokens(image_features, strategy=dummy_strategy)
+            # Use persistent dummy tokens instead of creating new ones each time
+            image_features = self.get_model().get_persistent_dummy_tokens(image_features, strategy=dummy_strategy)
 
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
@@ -614,143 +810,6 @@ class LlavaMetaForCausalLM(ABC):
 
         else:
             return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels, image_features_list[:-1], image_features_list[-1], new_image_token_mask
-
-    def create_dummy_image_tokens(self, image_features, strategy='gaussian'):
-        """
-        Creates dummy image tokens using different strategies.
-        
-        Args:
-            image_features: Original image features (single tensor or list of tensors)
-            strategy: Strategy to use for dummy tokens:
-                - 'gaussian': Gaussian noise with same mean/std as original features
-                - 'zeros': All zeros
-                - 'ones': All ones
-                - 'uniform': Uniform random values
-                - 'constant': Constant value (specified by dummy_token_value)
-            
-        Returns:
-            Dummy tokens with same shape as input features
-        """
-        dummy_value = getattr(self.config, 'dummy_token_value', 0.0) 
-        
-        if isinstance(image_features, list):
-            dummy_features = []
-            for feat in image_features:
-                dummy_feat = self._apply_dummy_strategy(feat, strategy, dummy_value)
-                dummy_features.append(dummy_feat)
-            return dummy_features
-        else:
-            return self._apply_dummy_strategy(image_features, strategy, dummy_value)
-    
-    def _apply_dummy_strategy(self, features, strategy, dummy_value):
-        """Helper method to apply dummy token strategy to a single feature tensor"""
-        # Check if dummy tokens should be trainable based on config
-        trainable = getattr(self.config, 'dummy_token_trainable', True)
-        requires_grad = features.requires_grad
-        
-        if strategy == 'gaussian':
-            # Calculate mean and std of the real features
-            mean = features.mean().item()
-            std = max(features.std().item(), 1e-6)  # Avoid very small std
-            # Create Gaussian noise with same distribution
-            dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
-            # Handle trainability based on config
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'zeros':
-            dummy = torch.zeros_like(features, device=features.device, dtype=features.dtype)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'ones':
-            dummy = torch.ones_like(features, device=features.device, dtype=features.dtype)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'random':
-            # Uniform random values between 0 and 1
-            dummy = torch.rand_like(features, device=features.device, dtype=features.dtype)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'constant':
-            # Constant value specified by dummy_token_value
-            dummy = torch.full_like(features, dummy_value, device=features.device, dtype=features.dtype)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'whitespace':
-            # Get the embedding for the whitespace token
-            if not hasattr(self, 'tokenizer'):
-                print("Warning: Tokenizer not available for whitespace strategy. Falling back to gaussian.")
-                mean = features.mean().item()
-                std = max(features.std().item(), 1e-6)
-                dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
-                if requires_grad:
-                    dummy.requires_grad_(True)
-                if not trainable:
-                    dummy = dummy.detach()
-                return dummy
-            
-            whitespace_id = self.tokenizer.encode(' ', add_special_tokens=False)[0]
-            whitespace_embedding = self.get_model().embed_tokens.weight[whitespace_id].clone()
-            # Expand to match feature dimensions
-            dummy = whitespace_embedding.expand_as(features).to(features.device)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        elif strategy == 'newline':
-            # Get the embedding for the newline token
-            if not hasattr(self, 'tokenizer'):
-                print("Warning: Tokenizer not available for newline strategy. Falling back to gaussian.")
-                mean = features.mean().item()
-                std = max(features.std().item(), 1e-6)
-                dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
-                if requires_grad:
-                    dummy.requires_grad_(True)
-                if not trainable:
-                    dummy = dummy.detach()
-                return dummy
-                
-            newline_id = self.tokenizer.encode('\n', add_special_tokens=False)[0]
-            newline_embedding = self.get_model().embed_tokens.weight[newline_id].clone()
-            # Expand to match feature dimensions
-            dummy = newline_embedding.expand_as(features).to(features.device)
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
-        
-        else:
-            print(f"Warning: Unknown dummy token strategy '{strategy}'. Falling back to 'gaussian'.")
-            mean = features.mean().item()
-            std = max(features.std().item(), 1e-6)
-            dummy = torch.randn_like(features, device=features.device, dtype=features.dtype) * std + mean
-            if requires_grad:
-                dummy.requires_grad_(True)
-            if not trainable:
-                dummy = dummy.detach()
-            return dummy
 
     def initialize_vision_tokenizer(self, model_args, tokenizer):
         """

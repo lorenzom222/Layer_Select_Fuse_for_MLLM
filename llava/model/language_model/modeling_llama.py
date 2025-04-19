@@ -1431,9 +1431,14 @@ class LlamaModel(LlamaPreTrainedModel):
                 # Find the position of adjusted_layer_idx in layer_indices
                 if adjusted_layer_idx in layer_indices:
                     index = layer_indices.index(adjusted_layer_idx)
-                    image_f = images_features[index]
+                    image_f = images_features[index] # a list containing features potentially extracted from different layers of the ViT
                 if self.layer_fusing_strategy == 'I_D':  # This doesnt make sense. Why is layer_using_strategy I_D? I_D should map to layer_fusing_strategy = 'I_D'   
-                    if past_key_value is None and decoder_layer.has_cross:
+                    if past_key_value is None and decoder_layer.has_cross: # it's not actually cross attention just "cross" meaning fusion or something.
+                        # That layer will be selected as a fusion poin
+                        # So just checking if this layer is the fusion point.
+                        # No cross-attention module is used.
+                        # It just adds image features directly into the hidden states 
+                        # — like sticking vision info straight into the token stream.
                         for batch_idx in range(hidden_states.shape[0]):
                             cur_image_mask = image_token_mask[batch_idx] # Note this is how you use iamge okten mask per batch
                             img_token_indices = torch.where(cur_image_mask == 1)[0] # Note this is how you get the indices of the image tokens

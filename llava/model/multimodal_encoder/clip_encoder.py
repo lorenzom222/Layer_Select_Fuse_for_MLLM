@@ -11,10 +11,9 @@ class CLIPVisionTower(nn.Module):
         self.is_loaded = False
 
         self.vision_tower_name = vision_tower
-        self.select_layer = args.mm_vision_select_layer
         self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
+        self.vit_feature_select_layers = getattr(args, 'vit_feature_select_layers', [-1])
 
-        self.layer_using_strategy = args.layer_using_strategy
         if not delay_load:
             self.load_model()
         elif getattr(args, 'unfreeze_mm_vision_tower', False):
@@ -38,28 +37,29 @@ class CLIPVisionTower(nn.Module):
     def feature_select(self, image_forward_outs):
 
         selected_features = []
-        if self.layer_using_strategy == '18':
-            select_layer = [18,23]
-        if self.layer_using_strategy == '3-18':
-            select_layer = [3,18,23]    
-        if self.layer_using_strategy == '3-18-23':
-            select_layer = [3,18,23,23]
-        if self.layer_using_strategy == 'former':                 
-            select_layer = [1,2,3,4,5,6,7,8,9,10,11,12,23]
-        if self.layer_using_strategy == 'latter':
-            select_layer = [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,23]
-        if self.layer_using_strategy == 'all':
-            select_layer = [1,2,3,4,5,6,7,8,9,10,11,12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,23]
-        if self.layer_using_strategy == 'last':
-            # Only use the last layer output
+
+        select_layer = self.vit_feature_select_layers
+        if select_layer is None or not isinstance(select_layer, list):
+             print(f"Warning: vit_feature_select_layers is invalid ({select_layer}), defaulting to [-1].")
+             select_layer = [-1]
+        if not select_layer:
+            print("Warning: vit_feature_select_layers is empty, defaulting to [-1].")
             select_layer = [-1]
 
         for layer_index in select_layer:
+            if not isinstance(layer_index, int):
+                print(f"Warning: Skipping invalid layer index {layer_index} in vit_feature_select_layers.")
+                continue
+
             if layer_index == -1:
                 # Use the last hidden state directly
                 layer_features = image_forward_outs.last_hidden_state
+            elif layer_index >= 0 and hasattr(image_forward_outs, 'hidden_states') and image_forward_outs.hidden_states is not None and layer_index < len(image_forward_outs.hidden_states):
+                 layer_features = image_forward_outs.hidden_states[layer_index]
             else:
-                layer_features = image_forward_outs.hidden_states[layer_index]
+                print(f"Warning: Cannot access hidden state for layer index {layer_index}. Skipping.")
+                continue
+
             if self.select_feature == 'patch':
                 layer_features = layer_features[:, 1:]
             elif self.select_feature == 'cls_patch':
@@ -68,6 +68,14 @@ class CLIPVisionTower(nn.Module):
                 raise ValueError(f'Unexpected select feature: {self.select_feature}')
             selected_features.append(layer_features)
 
+        if not selected_features:
+             print("Warning: No valid features selected based on vit_feature_select_layers, defaulting to last_hidden_state.")
+             layer_features = image_forward_outs.last_hidden_state
+             if self.select_feature == 'patch':
+                 layer_features = layer_features[:, 1:]
+             elif self.select_feature != 'cls_patch':
+                 raise ValueError(f'Unexpected select feature: {self.select_feature}')
+             selected_features.append(layer_features)
 
         return selected_features
     

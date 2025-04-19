@@ -1,5 +1,6 @@
 #!/bin/bash
-BASE_MODEL_NAME="dummy_token_zeros"
+DUMMY_TOKEN_STRATEGY="whitespace"
+BASE_MODEL_NAME="dummy_token_${DUMMY_TOKEN_STRATEGY}"
 
 # Define common variables
 FUSING_STRATEGY="E_D" # Empty string for no fusion strategy
@@ -54,7 +55,7 @@ accelerate launch llava/train/train.py \
     --wandb_name ${BASE_MODEL_NAME}-${FUSING_STRATEGY}-pretrain-${USING_STRATEGY}-${MODEL_NAME}-${TIMESTAMP} \
     --compute_cka True \
     --use_dummy_image_tokens True \
-    --dummy_token_strategy "gaussian"
+    --dummy_token_strategy ${DUMMY_TOKEN_STRATEGY}
 
 #--max_steps 10 \
 # # Fine-tuning
