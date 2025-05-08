@@ -575,16 +575,18 @@ def compute_cosine_similarity(X: torch.Tensor, Y: torch.Tensor, eps: float = 1e-
     """
     Compute per-sample cosine similarity between two sets of feature vectors.
     Args:
-      X: Tensor of shape [B, D_text]
-      Y: Tensor of shape [B, D_img]
+      X: Tensor of shape [N_Text, D_text]
+      Y: Tensor of shape [N_Image, D_img]
       eps: small constant to avoid divide-by-zero
     Returns:
       cos_sims: Tensor of shape [B], where
         cos_sims[i] = (X[i] · Y[i]) / (||X[i]|| * ||Y[i]||)
     """
-    # F.cosine_similarity does exactly this under the hood
-    x_mean = X.mean(dim=0)
-    y_mean = Y.mean(dim=0)
+    # Instead of doing mean (really bad)
+    # We should do this attention-based thing suggested, not sure but will double check
+    
+    x_mean = X.mean(dim=0) # [D_text]
+    y_mean = Y.mean(dim=0) # [D_img]
     cos_sims = F.cosine_similarity(x_mean, y_mean, dim=0, eps=eps)
     return cos_sims
 

@@ -858,6 +858,10 @@ def train(attn_implementation=None):
         )
     model.config.use_cache = False
 
+    rank0_print(f"LLM Model loaded: {model_args.model_name_or_path}")
+    total_params_llm = sum(p.numel() for p in model.parameters())
+    rank0_print(f"Total LLM parameters: {total_params_llm / 1e9:.2f}B")
+
 
     if model_args.freeze_backbone:
         model.model.requires_grad_(False)
@@ -1012,6 +1016,48 @@ def train(attn_implementation=None):
         model.config.mm_projector_lr = training_args.mm_projector_lr
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
+        
+        # --- Start: Print Model Size/Shape Info ---
+        rank0_print("--- Model Size and Shape Information ---")
+        # LLM size already printed above
+
+        # ViT Details
+        vision_tower = model.get_vision_tower()
+        if vision_tower is not None:
+            total_params_vit = sum(p.numel() for p in vision_tower.parameters())
+            rank0_print(f"Vision Tower ({model_args.vision_tower}) loaded.")
+            rank0_print(f"Total Vision Tower parameters: {total_params_vit / 1e6:.2f}M")
+            rank0_print(f"Vision Tower Hidden Dimension: {vision_tower.config.hidden_size}")
+        else:
+            rank0_print("No Vision Tower loaded.")
+
+        # Projector Details
+        if hasattr(model.get_model(), 'mm_projectors'):
+            for idx, projector in enumerate(model.get_model().mm_projectors):
+                 rank0_print(f"MM Projector {idx} Shape: Input {projector[0].in_features}, Output {projector[-1].out_features}")
+                 # Print shapes of linear layers within the projector MLP
+                 for i, layer in enumerate(projector):
+                     if isinstance(layer, torch.nn.Linear):
+                         rank0_print(f"  - Projector {idx}, Linear Layer {i} weight shape: {layer.weight.shape}")
+        
+        if hasattr(model.get_model(), 'mm_projector_f') and model.get_model().mm_projector_f is not None:
+            rank0_print(f"MM Projector F Shape: Input {model.get_model().mm_projector_f[0].in_features}, Output {model.get_model().mm_projector_f[-1].out_features}")
+            for i, layer in enumerate(model.get_model().mm_projector_f):
+                 if isinstance(layer, torch.nn.Linear):
+                     rank0_print(f"  - Projector F, Linear Layer {i} weight shape: {layer.weight.shape}")
+        
+        # Cross-Attention Details (if applicable)
+        if hasattr(model.get_model(), 'layers') and hasattr(model.get_model().layers[0], 'ucross_attn'):
+             cross_attn_layer = model.get_model().layers[0].ucross_attn # Assuming similar structure across layers
+             rank0_print(f"Cross Attention q_proj weight shape: {cross_attn_layer.q_proj.weight.shape}")
+             rank0_print(f"Cross Attention k_proj weight shape: {cross_attn_layer.k_proj.weight.shape}")
+             rank0_print(f"Cross Attention v_proj weight shape: {cross_attn_layer.v_proj.weight.shape}")
+             rank0_print(f"Cross Attention o_proj weight shape: {cross_attn_layer.o_proj.weight.shape}")
+
+
+        rank0_print("----------------------------------------")
+        # --- End: Print Model Size/Shape Info ---
+
         print(" model.config.mm_use_im_start_end:", model.config.mm_use_im_start_end)
         print(" model.config.mm_projector_lr:", model.config.mm_projector_lr)
         # print(" training_args.cross_attn_lr:", training_args.cross_attn_lr)

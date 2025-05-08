@@ -239,6 +239,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
                     # Masks
                     text_token_mask = (cur_image_mask == 0)# & (cur_attention_mask == 1)
+                    # NOTE: Input prompt does not affect alignment.
+                    # 1. Mask text input prompt as as one option (maybe remove padding too, we shall see)
+                    # 2. Keep text tokens as is
                     text_token_indices = torch.where(text_token_mask)
                     text_embeds = cur_hidden_sample[text_token_indices]
                     text_embeds_plain.append(text_embeds)
